@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <iostream>
+#include <sstream>
 using namespace std;
 
 bool ReadSect(const char *_dsk, char*& _buff, unsigned int _nsect) {
@@ -17,34 +18,60 @@ bool ReadSect(const char *_dsk, char*& _buff, unsigned int _nsect) {
 	return true;
 }
 
+int ReadSector(int numSector,char* buf)
+{
+    int retCode = 0;
+    BYTE sector[512];
+    DWORD bytesRead;
+    HANDLE device = NULL;
+
+    device = CreateFile("\\\\.\\E:", GENERIC_READ, FILE_SHARE_READ, NULL,OPEN_EXISTING, 0, NULL);
+
+    if(device != NULL){
+        // Read one sector
+        SetFilePointer (device, numSector*512, NULL, FILE_BEGIN) ;
+        if (!ReadFile(device, sector, 512, &bytesRead, NULL)) {
+            cout << "Error in reading1 floppy disk\n";
+        }
+        else {
+            // Copy boot sector into buffer and set retCode
+            memcpy(buf,sector, 512);
+			retCode=1;
+        }
+        CloseHandle(device);
+    }
+
+    return retCode;
+}
+
+char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
+void print_sector(char*& buff){
+	cout << "\nHex:";
+	for (int i = 0; i < 512; ++i){
+		if (i % 16 == 0)
+			cout << endl;
+		cout << hex_chars[ (buff[i] & 0xF0) >> 4 ];
+		cout << hex_chars[ (buff[i] & 0x0F) >> 0 ] << " ";
+	}
+
+	cout << "\nascii:";
+	for (int i = 0; i < 512; ++i){
+		if (i % 16 == 0)
+			cout << endl;
+
+		if (isascii(buff[i]))
+			cout << buff[i] << " ";
+		else 
+			cout << ". ";
+	}
+}
+
 int main(){
 	char* dsk = "\\\\.\\PhysicalDrive1";
 	int sector = 0;
-	char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 	char* buff = new char[512];
 
-	if(ReadSect(dsk, buff, sector)){
-		if((unsigned char)(buff[510] == 0x55 && (unsigned char)buff[511] == 0xaa))
-			cout << "Disk is bootable!" << endl;
-
-		for (int i = 0; i < 512; ++i){
-			if (i % 16 == 0)
-				cout << endl;
-			cout << hex_chars[ (buff[i] & 0xF0) >> 4 ];
-			cout << hex_chars[ (buff[i] & 0x0F) >> 0 ] << " ";
-		}
-
-		for (int i = 0; i < 512; ++i){
-			if (i % 16 == 0)
-				cout << endl;
-
-			if (isascii(buff[i]))
-				cout << buff[i] << " ";
-			else 
-				cout << ". ";
-		}
-	}
-	else {
-		cout << "Run as admin";
+	if(ReadSector(sector, buff)){
+		print_sector(buff);
 	}
 } 
