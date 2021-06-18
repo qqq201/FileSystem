@@ -84,7 +84,6 @@ class FAT32 {
 		long Sb = 0;
 		int Nf = 0;
 		int Sf = 0;
-		long Srdet = 0;
 		long first_cluster = 0;
 		long Sv = 0;
 		int Sc = 0;
@@ -94,66 +93,25 @@ class FAT32 {
 			this->disk = disk;
 		}
 
-		void read_sector_size(char* data){
+		void read_bootsector(char* data){
 			default_sector_size = little_edian_read(data, 11, 2);
-		}
-
-		void read_Sb(char* data){
 			this->Sb = little_edian_read(data, 14, 2); 
-		}
-
-		void read_Nf(char* data){
 			this->Nf = data[16];
-		}
-
-		void read_Sf(char* data){
-			this->Sf = little_edian_read(data, 36, 4);
-		}
-
-		void read_Srdet(char* data){
-			this->Srdet = little_edian_read(data, 17, 2);
 			this->first_cluster = little_edian_read(data, 44, 4);
-		}
-
-		void read_Sv(char* data){
+			this->Sf = little_edian_read(data, 36, 4);
+			this->first_cluster = little_edian_read(data, 44, 4);
 			this->Sv = little_edian_read(data, 32, 4);
-		}
-
-		void read_Sc(char* data){
 			this->Sc = data[13];
-		}
-
-		void read_bootsector(bool print_raw){
-			int sector = 0;
-			char* buff = new char[512];
-
-			if (ReadSector(this->disk, buff, sector)){
-				read_sector_size(buff);
-				read_Sb(buff);
-				read_Nf(buff);
-				read_Srdet(buff);
-				read_Sv(buff);
-				read_Sc(buff);
-				read_Sf(buff);
-
-				if (print_raw){
-					print_sector(buff);
-				}
-			}
-			else {
-				cout << "Please run as administrator.";
-			}
 		}
 
 		void get_bs_info(){
 			cout << "Sector size: " << default_sector_size << " Bytes\n";
-			cout << "Volume size: " << Sv / 2097152.0 << " GB\n";
-			cout << "Boot sector size: " << Sb << " Sectors\n"; 
-			cout << "Number of fat: " << Nf << endl;
-			cout << "Fat size: " << Sf << " Sectors\n";
-			cout << "RDET size: " << Srdet << " Sectors\n";
-			cout << "Sectors per cluster: " << Sc << endl;
-			cout << "RDET first cluster: " << first_cluster << endl;
+			cout << "Volume size: " << this->Sv / 2097152.0 << " GB\n";
+			cout << "Boot sector size: " << this->Sb << " Sectors\n"; 
+			cout << "Number of fat: " << this->Nf << endl;
+			cout << "Fat size: " << this->Sf << " Sectors\n";
+			cout << "Sectors per cluster: " << this->Sc << endl;
+			cout << "RDET first cluster: " << this->first_cluster << endl;
 		}
 
 		void read_fat(int entry){
@@ -161,25 +119,64 @@ class FAT32 {
 		}
 
 		void read_rdet() {
+
 		}
 
-		void read_file(int cluster) {
-			
+		void read_file(vector<int> clusters) {
+			for (int cluster : clusters){
+				int sector = Sb + Nf * Sf + (cluster - first_cluster) * Sc;
+				for (int s = sector; s < sector + Sc; ++s){
+					char* buff = new char[512];
+					if (ReadSector(disk, buff, s)){
+						for (int c = 0; c < 512; ++c)
+							if (buff[c] != 0)
+								cout << buff[c];
+					}
+				}
+			}
 		}
 };
 
 int main(){
+	//set tile
+	SetConsoleTitleA("File system reader");
+	//set white console
+	system("color f0");
+
+	//list drives
+
+	//select drive
 	cout << "Which drive: ";
 	char c = cin.get();
 	cin.ignore();
 
+	//get drive ID
 	string disk = "\\\\.\\?:";
 	disk[4] = toupper(c);
 
-	FAT32 fat(disk.c_str());
-	fat.read_bootsector(true);
-	fat.get_bs_info();
+	//read first sector and determine which filesystem
+	char* buff = new char[512];
+	if (ReadSector(disk.c_str(), buff, 0)){
+		string Filesystem;
+		
+		for (int i = 82; i < 90; ++i){
+			if (buff[i] == ' ')
+				break;
+			Filesystem += buff[i];
+		}
 
-	cout << "\nPress any key to continue...";
+		cout << "File system: "<< Filesystem << endl;
+
+		if (Filesystem.compare("FAT32") == 0){
+			FAT32 fat(disk.c_str());
+			fat.read_bootsector(buff);
+			fat.get_bs_info();
+		}
+	}
+	else {
+		cout << "Please run as administrator\n";
+	}
+
+	cout << "\nPress any key to exit...";
 	cin.get();
 } 
