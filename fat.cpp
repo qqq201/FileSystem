@@ -3,13 +3,14 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+
 using namespace std;
 
 char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 int default_sector_size = 512;
 
 bool ReadSector(const char *disk, char*& buff, unsigned int sector) {
-	DWORD dwRead;   
+	DWORD dwRead;
 	HANDLE hDisk = CreateFile(disk,GENERIC_READ,FILE_SHARE_VALID_FLAGS,0,OPEN_EXISTING,0,0);
 	if(hDisk == INVALID_HANDLE_VALUE){
 		CloseHandle(hDisk);
@@ -32,7 +33,7 @@ void print_sector(char*& buff){
 			for (int j = i - 15; j <= i; ++j){
 				if (isalpha(buff[j]) || isdigit(buff[j]))
 					cout << buff[j];
-				else 
+				else
 					cout << ".";
 			}
 			cout << endl;
@@ -99,7 +100,7 @@ class FAT32 {
 		}
 
 		void read_Sb(char* data){
-			this->Sb = little_edian_read(data, 14, 2); 
+			this->Sb = little_edian_read(data, 14, 2);
 		}
 
 		void read_Nf(char* data){
@@ -148,7 +149,7 @@ class FAT32 {
 		void get_bs_info(){
 			cout << "Sector size: " << default_sector_size << " Bytes\n";
 			cout << "Volume size: " << Sv / 2097152.0 << " GB\n";
-			cout << "Boot sector size: " << Sb << " Sectors\n"; 
+			cout << "Boot sector size: " << Sb << " Sectors\n";
 			cout << "Number of fat: " << Nf << endl;
 			cout << "Fat size: " << Sf << " Sectors\n";
 			cout << "RDET size: " << Srdet << " Sectors\n";
@@ -157,14 +158,33 @@ class FAT32 {
 		}
 
 		void read_fat(int entry){
-			
 		}
 
-		void read_rdet() {
+		void read_rdet(bool print_raw) {
+			int sector = this->Sb + this->Sf * this->Nf;
+
+			bool isMainEntry = false;
+			char* name = new char;
+			char* ext = new char;
+			int status [8] = {0};
+			int fileSize = 0;
+			int firstCluster = 0;
+
+			char* buff = new char[512];
+			char* entry = new char[32];
+			vector <char*> file;
+
+			if(ReadSector(this->disk, buff, sector)) {
+
+				if(print_raw)
+					print_sector(buff);
+			}
 		}
 
+		void get_rdet_info() {
+
+		}
 		void read_file(int cluster) {
-			
 		}
 };
 
@@ -179,7 +199,7 @@ int main(){
 	FAT32 fat(disk.c_str());
 	fat.read_bootsector(true);
 	fat.get_bs_info();
-
+	fat.read_rdet(true);
 	cout << "\nPress any key to continue...";
 	cin.get();
-} 
+}
