@@ -64,7 +64,7 @@ class Entry {
 	public:
 		Entry() {}
 		string getStatus() {
-
+			return "status of entry";
 		}
 		virtual void print_info() {
 			cout << "Status: " << this->getStatus() << endl;
@@ -73,12 +73,8 @@ class Entry {
 		}
 		virtual void readEntry() = 0;
 };
-// Todo: return Folder or File instance
-Entry* createEntry(const char* data) {
 
-}
-
-class File : protected Entry{
+class File : public Entry{
 	private:
 		string ext;
 	public:
@@ -92,7 +88,7 @@ class File : protected Entry{
 		}
 };
 
-class Folder : protected Entry{
+class Folder : public Entry{
 	private:
 		vector<Entry*> entries;
 	public:
@@ -108,6 +104,12 @@ class Folder : protected Entry{
 			}
 		}
 };
+
+// Todo: return Folder or File instance
+Entry* createEntry(const char* data) {
+	Entry* file = new Folder;
+	return file;
+}
 
 class FAT32 {
 	private:
@@ -199,12 +201,16 @@ class FAT32 {
 
 			while(hasNextSector) {
 				if(ReadSector(this->disk, buff, sector)) {
-					for(int entry = 0; entry < 512/32; entry++) {
+					for(int byte = 0; byte < 500; byte+=32) {
+						// ? how to get 32 byte for each entry ??
+						// entryData = 32 byte;
 						entries.push_back(createEntry(entryData));
 					}
-					if(print_raw)
-						print_sector(buff);
 				}
+				if(print_raw)
+					print_sector(buff);
+				//? If come to empty entry stop reading
+				hasNextSector = false;
 
 			}
 
