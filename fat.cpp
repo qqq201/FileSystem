@@ -73,10 +73,6 @@ class Entry {
 		}
 		virtual void readEntry() = 0;
 };
-// Todo: return Folder or File instance
-Entry* createEntry(const char* data) {
-
-}
 
 class File : protected Entry{
 	private:
@@ -108,6 +104,11 @@ class Folder : protected Entry{
 			}
 		}
 };
+
+// Todo: return Folder or File instance
+Entry* createEntry(const char* data) {
+
+}
 
 class FAT32 {
 	private:
