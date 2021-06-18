@@ -55,35 +55,61 @@ long little_edian_read(char* data, int start, int nbyte){
 
 class Entry {
 	protected:
-		string name;
-		int status [8] = {0};
-		int fileSize = 0;
+		char* dataEntry;
+		int numExtraEntry = 0;
 		int firstCluster = 0;
-		bool isMainEntry = false;
-
+		string status = "";
+		string name = "";
 	public:
-		Entry() {}
-		string getStatus() {
-			return "status of entry";
+		Entry(char* dataEntry, int numExtraEntry) {
+			this->dataEntry = dataEntry;
+			this->numExtraEntry = numExtraEntry;
 		}
+
+		void readStatus() {
+			long offset0B = little_edian_read(dataEntry, 11 + numExtraEntry * 32, 1);
+			vector <int> binary0B(8, 0);
+			for(int i = 0; offset0B > 0; i++) {
+				binary0B[i] = (offset0B % 2);
+				offset0B = offset0B / 2;
+			}
+			string status[6] = { "Read Only", "Hidden", "System", "Vol Label", "Directory", "Archive" };
+			for(int i = 0; i <= 6; i++) {
+				if(binary0B[i])
+					this->status += status[i];
+			}
+		}
+
+		void readFirstCluster() {
+
+		}
+
+		void readName() {
+
+		}
+
 		virtual void print_info() {
-			cout << "Status: " << this->getStatus() << endl;
-			cout << "Entry size: " << this->fileSize << " byte" << endl;
+			cout << "Status: " << this->status << endl;
 			cout << "First cluster: " << this->firstCluster << endl;
 		}
+
 		virtual void readEntry() = 0;
 };
 
 class File : public Entry{
 	private:
-		string ext;
+		string ext = "";
+		int fileSize = 0;
 	public:
-		File() : Entry() {}
-		virtual void readEntry() {
+		File(char* dataEntry, int numExtraEntry) : Entry(dataEntry, numExtraEntry) {}
 
+		virtual void readEntry() {
+			// this->readStatus();
 		}
+
 		virtual void print_info() {
 			cout << "File name: " << this->name << this->ext << endl;
+			cout << "Size of file : " << this->fileSize << " byte" << endl;
 			Entry::print_info();
 		}
 };
@@ -92,23 +118,39 @@ class Folder : public Entry{
 	private:
 		vector<Entry*> entries;
 	public:
-		Folder() : Entry() {}
-		virtual void readEntry() {
+		Folder(char* dataEntry, int numExtraEntry) : Entry(dataEntry, numExtraEntry) {}
 
+		virtual void readEntry() {
+			// this->readStatus();
 		}
+
 		virtual void print_info() {
 			cout << "Folder name: " << this->name << endl;
 			Entry::print_info();
-			for (Entry* entry : this->entries){
-				entry->print_info();
-			}
+			// for (Entry* entry : this->entries){
+				// entry->print_info();
+			// }
 		}
 };
 
 // Todo: return Folder or File instance
-Entry* createEntry(const char* data) {
-	Entry* file = new Folder;
-	return file;
+Entry* getEntry(char* data, int extraEntries) {
+	Entry* entry;
+	long offset0B = little_edian_read(data, 11 + extraEntries * 32, 1); //decimal
+
+	vector <int> binary0B(8, 0);
+	for(int i = 0; offset0B > 0; i++) {
+		binary0B[i] = (offset0B % 2);
+		offset0B = offset0B / 2;
+	}
+
+	if(binary0B[5] == 1) {
+		entry = new File(data, extraEntries);
+	}
+	else if(binary0B[4] == 1) {
+		entry = new Folder(data, extraEntries);
+	}
+	return entry;
 }
 
 class FAT32 {
@@ -121,6 +163,7 @@ class FAT32 {
 		long first_cluster = 0;
 		long Sv = 0;
 		int Sc = 0;
+		vector <Entry*> entries;
 
 	public:
 		FAT32(const char* disk) {
@@ -189,34 +232,55 @@ class FAT32 {
 			cout << "RDET first cluster: " << first_cluster << endl;
 		}
 
-		void read_fat(int entry){
-		}
+		void read_fat(int entry){}
 
 		void read_rdet(bool print_raw) {
-			vector <Entry*> entries;
 			int sector = this->Sb + this->Sf * this->Nf;
-			char* buff = new char[512];
-			char* entryData = new char[32];
 			bool hasNextSector = true;
+			char* buff = new char[512];
 
 			while(hasNextSector) {
 				if(ReadSector(this->disk, buff, sector)) {
-					for(int byte = 0; byte < 500; byte+=32) {
-						// ? how to get 32 byte for each entry ??
-						// entryData = 32 byte;
-						entries.push_back(createEntry(entryData));
+					int extraEntries = 0;
+					char* entryData = new char[512];
+					for(int byte = 0; byte < 512; byte+=32) {
+						for(int i = 0 ; i < 32 ; i++) {
+							if(extraEntries == 0) {
+								entryData[i] = buff[byte + i];
+							}
+							else {
+								entryData[i + 32 * extraEntries] = buff[byte + i];
+							}
+						}
+						//* Check extra entry
+						long offset0B = little_edian_read(entryData, 11 + extraEntries * 32, 1); //decimal
+						if(offset0B == 15) {
+							extraEntries++;
+						}
+						else if(offset0B == 0) {
+							hasNextSector = false;
+						}
+						else {
+							entries.push_back(getEntry(entryData, extraEntries));
+							entryData = new char;
+							extraEntries = 0;
+						}
 					}
 				}
-				if(print_raw)
+				if(print_raw) {
 					print_sector(buff);
-				//? If come to empty entry stop reading
-				hasNextSector = false;
-
+				}
 			}
+		}
 
+		void get_rdet_info() {
+			// for(Entry* entry: this->entries) {
+			// 	entry->print_info();
+			// }
+			cout << "Number of entry in DRET: " << entries.size();
 		}
-		void read_file(int cluster) {
-		}
+
+		void read_file(int cluster) {}
 };
 
 int main(){
@@ -228,9 +292,14 @@ int main(){
 	disk[4] = toupper(c);
 
 	FAT32 fat(disk.c_str());
-	fat.read_bootsector(true);
+	fat.read_bootsector(false);
 	fat.get_bs_info();
 	fat.read_rdet(true);
+	cout << "\nPress any key to get info...";
+	cin.get();
+
+	fat.get_rdet_info();
+
 	cout << "\nPress any key to continue...";
 	cin.get();
 }
