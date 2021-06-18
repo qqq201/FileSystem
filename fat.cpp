@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <sstream>
+#include <vector>
 using namespace std;
 
 char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
@@ -49,6 +50,33 @@ long little_edian_read(char* data, int start, int nbyte){
 
 	return stoi(ss.str(), 0, 16);
 }
+
+class Entry {
+	protected:
+		string name;
+	public:
+		Entry() {}
+		void print_info() {}
+};
+
+class File : protected Entry{
+	private:
+	public:
+		File() : Entry() {}
+		void print_info() {}
+};
+
+class Folder : protected Entry{
+	private:
+		vector<Entry*> entries;
+	public:
+		Folder() : Entry() {}
+		void print_info() {
+			for (Entry* entry : this->entries){
+				entry->print_info();
+			}
+		}
+};
 
 class FAT32 {
 	private:
