@@ -52,12 +52,21 @@ long little_edian_read(char* data, int start, int nbyte){
 	return stoi(ss.str(), 0, 16);
 }
 
+void readCharacter (string& data, char* buff, int start, int nbyte, int nextra) {
+	int pos = start;
+	char character;
+	for(int i = 0; i < nbyte; i++) {
+		character = buff[pos + 32 * nextra];
+		data += character;
+		pos += 1;
+	}
+}
 
 class Entry {
 	protected:
 		char* dataEntry;
 		int numExtraEntry = 0;
-		int firstCluster = 0;
+		long firstCluster = 0;
 		string status = "";
 		string name = "";
 	public:
@@ -67,33 +76,55 @@ class Entry {
 		}
 
 		void readStatus() {
-			long offset0B = little_edian_read(dataEntry, 11 + numExtraEntry * 32, 1);
 			vector <int> binary0B(8, 0);
+			int offset0B = dataEntry[11 + numExtraEntry * 32];
 			for(int i = 0; offset0B > 0; i++) {
-				binary0B[i] = (offset0B % 2);
+				binary0B[i] = offset0B % 2;
 				offset0B = offset0B / 2;
 			}
 			string status[6] = { "Read Only", "Hidden", "System", "Vol Label", "Directory", "Archive" };
-			for(int i = 0; i <= 6; i++) {
-				if(binary0B[i])
+			for(int i = 0; i < 6; i++) {
+				if(binary0B[i] == 1) {
 					this->status += status[i];
+					this->status += " | ";
+				}
 			}
 		}
 
 		void readFirstCluster() {
-
+			//* 2 high byte at 14
+			long high = little_edian_read(this->dataEntry, 20 + this->numExtraEntry * 32, 2);
+			//* 2 high low at 1A
+			long low = little_edian_read(this->dataEntry, 26 + this->numExtraEntry * 32, 2);
+			this->firstCluster = high * 65536 + low;
+			//256: AABB / 65536: AAAABBBB
 		}
 
 		void readName() {
-
+			if(this->numExtraEntry == 0) {
+				//* 8 byte at 00
+				readCharacter(this->name, this->dataEntry, 0, 8, this->numExtraEntry);
+			}
+			else {
+				int pos;
+				int temp = 0;
+				for(int extraEntry = this->numExtraEntry - 1; extraEntry >= 0 ; extraEntry--) {
+					//* 10 byte at 01
+					readCharacter(this->name, this->dataEntry, 1, 10, extraEntry);
+					//* 12 byte at 0E
+					readCharacter(this->name, this->dataEntry, 14, 12, extraEntry);
+					//* 4 byte at 1C
+					readCharacter(this->name, this->dataEntry, 28, 4, extraEntry);
+				}
+			}
 		}
+
+		virtual void readEntry() = 0;
 
 		virtual void print_info() {
 			cout << "Status: " << this->status << endl;
 			cout << "First cluster: " << this->firstCluster << endl;
 		}
-
-		virtual void readEntry() = 0;
 };
 
 class File : public Entry{
@@ -103,8 +134,22 @@ class File : public Entry{
 	public:
 		File(char* dataEntry, int numExtraEntry) : Entry(dataEntry, numExtraEntry) {}
 
+		void readExt() {
+			//* 3 byte at 08
+			readCharacter(this->ext, this->dataEntry, 8, 3, this->numExtraEntry);
+		}
+
+		void readSize() {
+			//* 4 byte at 1C
+			this->fileSize = little_edian_read(this->dataEntry, 28, 4);
+		}
+
 		virtual void readEntry() {
-			// this->readStatus();
+			this->readName();
+			this->readExt();
+			this->readStatus();
+			this->readSize();
+			this->readFirstCluster();
 		}
 
 		virtual void print_info() {
@@ -121,7 +166,9 @@ class Folder : public Entry{
 		Folder(char* dataEntry, int numExtraEntry) : Entry(dataEntry, numExtraEntry) {}
 
 		virtual void readEntry() {
-			// this->readStatus();
+			this->readName();
+			this->readStatus();
+			this->readFirstCluster();
 		}
 
 		virtual void print_info() {
@@ -136,7 +183,7 @@ class Folder : public Entry{
 // Todo: return Folder or File instance
 Entry* getEntry(char* data, int extraEntries) {
 	Entry* entry;
-	long offset0B = little_edian_read(data, 11 + extraEntries * 32, 1); //decimal
+	long offset0B = data[11 + extraEntries * 32];
 
 	vector <int> binary0B(8, 0);
 	for(int i = 0; offset0B > 0; i++) {
@@ -156,11 +203,11 @@ Entry* getEntry(char* data, int extraEntries) {
 class FAT32 {
 	private:
 		const char* disk = NULL;
+		long first_cluster = 0;
 		long Sb = 0;
 		int Nf = 0;
 		int Sf = 0;
 		long Srdet = 0;
-		long first_cluster = 0;
 		long Sv = 0;
 		int Sc = 0;
 		vector <Entry*> entries;
@@ -253,12 +300,16 @@ class FAT32 {
 							}
 						}
 						//* Check extra entry
-						long offset0B = little_edian_read(entryData, 11 + extraEntries * 32, 1); //decimal
+						// long offset0B = little_edian_read(entryData, 11 + extraEntries * 32, 1); //decimal
+						long offset0B = entryData[11 + extraEntries * 32];
 						if(offset0B == 15) {
 							extraEntries++;
 						}
 						else if(offset0B == 0) {
 							hasNextSector = false;
+						}
+						else if(offset0B < 10) {
+							continue;
 						}
 						else {
 							entries.push_back(getEntry(entryData, extraEntries));
@@ -274,9 +325,10 @@ class FAT32 {
 		}
 
 		void get_rdet_info() {
-			// for(Entry* entry: this->entries) {
-			// 	entry->print_info();
-			// }
+			for(Entry* entry: this->entries) {
+				entry->readEntry();
+				entry->print_info();
+			}
 			cout << "Number of entry in DRET: " << entries.size();
 		}
 
@@ -295,6 +347,7 @@ int main(){
 	fat.read_bootsector(false);
 	fat.get_bs_info();
 	fat.read_rdet(true);
+
 	cout << "\nPress any key to get info...";
 	cin.get();
 
