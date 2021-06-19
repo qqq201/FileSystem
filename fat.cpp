@@ -299,7 +299,6 @@ class FAT32 {
 							}
 						}
 						//* Check extra entry
-						// long offset0B = little_edian_read(entryData, 11 + extraEntries * 32, 1); //decimal
 						long offset0B = entryData[11 + extraEntries * 32];
 						if(offset0B == 15) {
 							extraEntries++;
@@ -353,5 +352,6 @@ int main(){
 	fat.get_rdet_info();
 
 	cout << "\nPress any key to continue...";
+
 	cin.get();
 }
