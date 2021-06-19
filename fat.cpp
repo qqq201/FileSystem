@@ -139,7 +139,7 @@ class FAT32 {
 
 int main(){
 	//set tile
-	SetConsoleTitleA("File system reader");
+	SetConsoleTitleA("Filesystem reader");
 	//set white console
 	system("color f0");
 
