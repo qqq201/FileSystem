@@ -60,6 +60,12 @@ class NTFS {
 };
 
 int main(){
+	//set tile
+	SetConsoleTitleA("Filesystem reader");
+	//set white console
+	system("color f0");
+
+
 	cout << "Which drive: ";
 	char c = cin.get();
 	cin.ignore();
@@ -68,6 +74,9 @@ int main(){
 	disk[4] = toupper(c);
 
 	NTFS ntfs(disk.c_str());
+	char* buff = new char[512];
+	ReadSector(disk.c_str(), buff, 0);
+	print_sector(buff);
 
 	cout << "\nPress any key to continue...";
 	cin.get();
