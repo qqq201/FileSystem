@@ -6,6 +6,15 @@
 
 using namespace std;
 
+struct infoDRET
+{
+	int Sb;
+	int Sf;
+	int Nf;
+	int Sc;
+	const char* disk;
+};
+
 char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 int default_sector_size = 512;
 
@@ -67,12 +76,14 @@ class Entry {
 		char* dataEntry;
 		int numExtraEntry = 0;
 		long firstCluster = 0;
+		infoDRET info;
 		string status = "";
 		string name = "";
 	public:
-		Entry(char* dataEntry, int numExtraEntry) {
+		Entry(char* dataEntry, int numExtraEntry, infoDRET info) {
 			this->dataEntry = dataEntry;
 			this->numExtraEntry = numExtraEntry;
+			this->info = info;
 		}
 
 		void readStatus() {
@@ -92,28 +103,21 @@ class Entry {
 		}
 
 		void readFirstCluster() {
-			//* 2 high byte at 14
 			long high = little_edian_read(this->dataEntry, 20 + this->numExtraEntry * 32, 2);
-			//* 2 high low at 1A
 			long low = little_edian_read(this->dataEntry, 26 + this->numExtraEntry * 32, 2);
 			this->firstCluster = high * 65536 + low;
-			//256: AABB / 65536: AAAABBBB
 		}
 
 		void readName() {
 			if(this->numExtraEntry == 0) {
-				//* 8 byte at 00
 				readCharacter(this->name, this->dataEntry, 0, 8, this->numExtraEntry);
 			}
 			else {
 				int pos;
 				int temp = 0;
 				for(int extraEntry = this->numExtraEntry - 1; extraEntry >= 0 ; extraEntry--) {
-					//* 10 byte at 01
 					readCharacter(this->name, this->dataEntry, 1, 10, extraEntry);
-					//* 12 byte at 0E
 					readCharacter(this->name, this->dataEntry, 14, 12, extraEntry);
-					//* 4 byte at 1C
 					readCharacter(this->name, this->dataEntry, 28, 4, extraEntry);
 				}
 			}
@@ -127,20 +131,20 @@ class Entry {
 		}
 };
 
+Entry* getEntry(char* data, int extraEntries, infoDRET info);
+
 class File : public Entry{
 	private:
 		string ext = "";
 		int fileSize = 0;
 	public:
-		File(char* dataEntry, int numExtraEntry) : Entry(dataEntry, numExtraEntry) {}
+		File(char* dataEntry, int numExtraEntry, infoDRET info) : Entry(dataEntry, numExtraEntry, info) {}
 
 		void readExt() {
-			//* 3 byte at 08
 			readCharacter(this->ext, this->dataEntry, 8, 3, this->numExtraEntry);
 		}
 
 		void readSize() {
-			//* 4 byte at 1C
 			this->fileSize = little_edian_read(this->dataEntry, 28, 4);
 		}
 
@@ -163,24 +167,64 @@ class Folder : public Entry{
 	private:
 		vector<Entry*> entries;
 	public:
-		Folder(char* dataEntry, int numExtraEntry) : Entry(dataEntry, numExtraEntry) {}
+		Folder(char* dataEntry, int numExtraEntry, infoDRET info) : Entry(dataEntry, numExtraEntry, info) {}
+		int getFirstSector() {
+			return info.Sb + info.Sf * info.Nf + (this->firstCluster - 2) * info.Sc;
+		}
 
 		virtual void readEntry() {
 			this->readName();
 			this->readStatus();
 			this->readFirstCluster();
+
+			char* buff = new char[512];
+			bool hasNextSector = true;
+			while(hasNextSector) {
+				if(ReadSector(this->info.disk, buff, this->getFirstSector())) {
+					int extraEntries = 0;
+					char* entryData = new char[512];
+					for(int byte = 64; byte < 512; byte+=32) {
+						for(int i = 0 ; i < 32 ; i++) {
+							if(extraEntries == 0) {
+								entryData[i] = buff[byte + i];
+							}
+							else {
+								entryData[i + 32 * extraEntries] = buff[byte + i];
+							}
+						}
+						//* Check extra entry
+						long offset0B = entryData[11 + extraEntries * 32];
+						if(offset0B == 15) {
+							extraEntries++;
+						}
+						else if(offset0B == 0) {
+							hasNextSector = false;
+						}
+						else if(offset0B < 10) {
+							continue;
+						}
+						else {
+							infoDRET info = this->info;
+							this->entries.push_back(getEntry(entryData, extraEntries, info));
+							entryData = new char;
+							extraEntries = 0;
+						}
+					}
+				}
+			}
 		}
 
 		virtual void print_info() {
 			cout << "Folder name: " << this->name << endl;
 			Entry::print_info();
-			// for (Entry* entry : this->entries){
-				// entry->print_info();
-			// }
+			for (Entry* entry : this->entries){
+				entry->readEntry();
+				entry->print_info();
+			}
 		}
 };
 
-Entry* getEntry(char* data, int extraEntries) {
+Entry* getEntry(char* data, int extraEntries, infoDRET info) {
 	Entry* entry;
 	long offset0B = data[11 + extraEntries * 32];
 
@@ -191,10 +235,10 @@ Entry* getEntry(char* data, int extraEntries) {
 	}
 
 	if(binary0B[5] == 1) {
-		entry = new File(data, extraEntries);
+		entry = new File(data, extraEntries, info);
 	}
 	else if(binary0B[4] == 1) {
-		entry = new Folder(data, extraEntries);
+		entry = new Folder(data, extraEntries, info);
 	}
 	return entry;
 }
@@ -209,7 +253,7 @@ class FAT32 {
 		long Srdet = 0;
 		long Sv = 0;
 		int Sc = 0;
-		vector <Entry*> entries;
+		vector <Entry*> root;
 
 	public:
 		FAT32(const char* disk) {
@@ -282,8 +326,8 @@ class FAT32 {
 
 		void read_rdet(bool print_raw) {
 			int sector = this->Sb + this->Sf * this->Nf;
-			bool hasNextSector = true;
 			char* buff = new char[512];
+			bool hasNextSector = true;
 
 			while(hasNextSector) {
 				if(ReadSector(this->disk, buff, sector)) {
@@ -310,7 +354,8 @@ class FAT32 {
 							continue;
 						}
 						else {
-							entries.push_back(getEntry(entryData, extraEntries));
+							infoDRET info = {this->Sb, this->Sf, this->Nf, this->Sc, this->disk};
+							this->root.push_back(getEntry(entryData, extraEntries, info));
 							entryData = new char;
 							extraEntries = 0;
 						}
@@ -323,11 +368,11 @@ class FAT32 {
 		}
 
 		void get_rdet_info() {
-			for(Entry* entry: this->entries) {
-				entry->readEntry();
-				entry->print_info();
+			for(int i = 1; i < this->root.size(); i++) {
+				this->root[i]->readEntry();
+				this->root[i]->print_info();
 			}
-			cout << "Number of entry in DRET: " << entries.size();
+			cout << "Number of entry in DRET: " << root.size();
 		}
 
 		void read_file(int cluster) {}
@@ -335,16 +380,16 @@ class FAT32 {
 
 int main(){
 	cout << "Which drive: ";
-	char c = cin.get();
-	cin.ignore();
-
+	// char c = cin.get();
+	// cin.ignore();
+	char c = 'e';
 	string disk = "\\\\.\\?:";
 	disk[4] = toupper(c);
 
 	FAT32 fat(disk.c_str());
 	fat.read_bootsector(false);
 	fat.get_bs_info();
-	fat.read_rdet(true);
+	fat.read_rdet(false);
 
 	cout << "\nPress any key to get info...";
 	cin.get();
@@ -352,6 +397,5 @@ int main(){
 	fat.get_rdet_info();
 
 	cout << "\nPress any key to continue...";
-
 	cin.get();
 }
