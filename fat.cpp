@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <iomanip>
 
 using namespace std;
 
@@ -19,6 +20,21 @@ struct infoDRET
 
 char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 int default_sector_size = 512;
+
+bool get_logical_disks(string& disks){
+	DWORD mydrives = 64;// buffer length
+	char lpBuffer[64] {0};// buffer for drive string storage
+	
+	if (GetLogicalDriveStrings(mydrives, lpBuffer)){
+		for(int i = 0; i < 50; i++){
+			if (isalpha(lpBuffer[i]))
+				disks += lpBuffer[i];
+		}
+		return (disks.length() > 0);
+	}
+	else
+		return false;
+}
 
 bool ReadSector(const char *disk, char*& buff, unsigned int sector) {
 	DWORD dwRead;
@@ -36,6 +52,10 @@ bool ReadSector(const char *disk, char*& buff, unsigned int sector) {
 
 void print_sector(char*& buff){
 	for (int i = 0; i < default_sector_size; ++i){
+		if (i % 16 == 0){
+			cout << setfill('0') << setw(7) << hex << i / 16 << "0: ";
+		}
+
 		cout << hex_chars[ (buff[i] & 0xF0) >> 4 ];
 		cout << hex_chars[ (buff[i] & 0x0F) >> 0 ] << " ";
 
@@ -280,7 +300,6 @@ class FAT32 {
 		long Sb = 0;
 		int Nf = 0;
 		int Sf = 0;
-		long Srdet = 0;
 		long Sv = 0;
 		int Sc = 0;
 		vector <Entry*> root;
@@ -290,54 +309,20 @@ class FAT32 {
 			this->disk = disk;
 		}
 
-		void read_sector_size(char* data){
-			default_sector_size = little_edian_read(data, 11, 2);
-		}
 
-		void read_Sb(char* data){
-			this->Sb = little_edian_read(data, 14, 2);
-		}
-
-		void read_Nf(char* data){
-			this->Nf = data[16];
-		}
-
-		void read_Sf(char* data){
-			this->Sf = little_edian_read(data, 36, 4);
-		}
-
-		void read_Srdet(char* data){
-			this->Srdet = little_edian_read(data, 17, 2);
-			this->first_cluster = little_edian_read(data, 44, 4);
-		}
-
-		void read_Sv(char* data){
-			this->Sv = little_edian_read(data, 32, 4);
-		}
-
-		void read_Sc(char* data){
-			this->Sc = data[13];
-		}
-
-		void read_bootsector(bool print_raw){
-			int sector = 0;
-			char* buff = new char[512];
-
-			if (ReadSector(this->disk, buff, sector)){
-				read_sector_size(buff);
-				read_Sb(buff);
-				read_Nf(buff);
-				read_Srdet(buff);
-				read_Sv(buff);
-				read_Sc(buff);
-				read_Sf(buff);
-
-				if (print_raw){
-					print_sector(buff);
-				}
+		void read_bootsector(char* data){
+			if((unsigned char)data[510] == 0x55 && (unsigned char)data[511] == 0xaa){
+				default_sector_size = little_edian_read(data, 11, 2);
+				this->Sb = little_edian_read(data, 14, 2); 
+				this->Nf = data[16];
+				this->first_cluster = little_edian_read(data, 44, 4);
+				this->Sf = little_edian_read(data, 36, 4);
+				this->first_cluster = little_edian_read(data, 44, 4);
+				this->Sv = little_edian_read(data, 32, 4);
+				this->Sc = data[13];
 			}
 			else {
-				cout << "Please run as administrator.";
+				cout << "This disk can't be booted\n";
 			}
 		}
 
@@ -347,7 +332,6 @@ class FAT32 {
 			cout << "Boot sector size: " << Sb << " Sectors\n";
 			cout << "Number of fat: " << Nf << endl;
 			cout << "Fat size: " << Sf << " Sectors\n";
-			cout << "RDET size: " << Srdet << " Sectors\n";
 			cout << "Sectors per cluster: " << Sc << endl;
 			cout << "RDET first cluster: " << first_cluster << endl;
 		}
@@ -407,14 +391,37 @@ class FAT32 {
 			cout << "Number of entry in DRET: " << root.size();
 		}
 
-		void read_file(int cluster) {}
+		void read_fat(int entry){
+		}
+
+		
+
+		void read_file(vector<int> clusters) {
+			for (int cluster : clusters){
+				int sector = Sb + Nf * Sf + (cluster - first_cluster) * Sc;
+				for (int s = sector; s < sector + Sc; ++s){
+					char* buff = new char[512];
+					if (ReadSector(disk, buff, s)){
+						for (int c = 0; c < 512; ++c)
+							if (buff[c] != 0)
+								cout << buff[c];
+					}
+				}
+			}
+		}
 };
 
+void clearscreen(){
+	cin.get();
+	system("cls");
+}
+
 int main(){
+
 	cout << "Which drive: ";
-	// char c = cin.get();
-	// cin.ignore();
-	char c = 'e';
+	char c = cin.get();
+	cin.ignore();
+
 	string disk = "\\\\.\\?:";
 	disk[4] = toupper(c);
 
@@ -422,12 +429,66 @@ int main(){
 	fat.read_bootsector(false);
 	fat.get_bs_info();
 	fat.read_rdet(false);
-
-	cout << "\nPress any key to get info...";
-	cin.get();
-
 	fat.get_rdet_info();
 
-	cout << "\nPress any key to continue...";
+  
+	//set title
+	SetConsoleTitleA("Filesystem reader");
+	//set white console
+	system("color f0");
+
+	//set console can print unicode char
+	SetConsoleOutputCP(65001);
+
+	string disks;
+	if (get_logical_disks(disks)){
+		//list drives
+		cout << "Your current disks:\n";
+		for (char disk : disks){
+			cout << "└- " << disk << ":\\\n│\n";
+		}
+
+		//select drive
+		cout << "Which disk to inspect: ";
+		char c = toupper(cin.get());
+		cin.ignore();
+
+		size_t found = disks.find(c);
+	    if (found != string::npos){
+			//get drive ID
+			string disk = "\\\\.\\?:";
+			disk[4] = c;
+
+			//read first sector and determine which filesystem
+			char* buff = new char[512];
+			if (ReadSector(disk.c_str(), buff, 0)){
+				string Filesystem;
+				
+				for (int i = 82; i < 90; ++i){
+					if (buff[i] == ' ')
+						break;
+					Filesystem += buff[i];
+				}
+
+				cout << "File system: "<< Filesystem << endl;
+
+				if (Filesystem.compare("FAT32") == 0){
+					FAT32 fat(disk.c_str());
+					fat.read_bootsector(buff);
+					fat.get_bs_info();
+				}
+			}
+			else {
+				cout << "Error while reading\n";
+			}
+		}
+		else
+			cout << "Your input disk does not exist!\n";
+	}
+	else {
+		cout << "Can not get your logical disk name\n";
+	}
+
+	cout << "\nPress any key to exit...";
 	cin.get();
 }
