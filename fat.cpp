@@ -3,6 +3,8 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <algorithm>
+#include <cctype>
 
 using namespace std;
 
@@ -71,6 +73,26 @@ void readCharacter (string& data, char* buff, int start, int nbyte, int nextra) 
 	}
 }
 
+//* Trim from start
+static inline void ltrim(std::string &s) {
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
+}
+
+//* Trim from end
+static inline void rtrim(std::string &s) {
+    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }).base(), s.end());
+}
+
+// *Trim from both side
+static inline void trim(std::string &s) {
+    ltrim(s);
+    rtrim(s);
+}
+
 class Entry {
 	protected:
 		char* dataEntry;
@@ -79,11 +101,13 @@ class Entry {
 		infoDRET info;
 		string status = "";
 		string name = "";
+		string root = "";
 	public:
-		Entry(char* dataEntry, int numExtraEntry, infoDRET info) {
+		Entry(char* dataEntry, int numExtraEntry, infoDRET info, string rootName) {
 			this->dataEntry = dataEntry;
 			this->numExtraEntry = numExtraEntry;
 			this->info = info;
+			this->root = rootName;
 		}
 
 		void readStatus() {
@@ -96,6 +120,7 @@ class Entry {
 			string status[6] = { "Read Only", "Hidden", "System", "Vol Label", "Directory", "Archive" };
 			for(int i = 0; i < 6; i++) {
 				if(binary0B[i] == 1) {
+					this->status += " | ";
 					this->status += status[i];
 					this->status += " | ";
 				}
@@ -121,6 +146,7 @@ class Entry {
 					readCharacter(this->name, this->dataEntry, 28, 4, extraEntry);
 				}
 			}
+			// trim(this->name);
 		}
 
 		virtual void readEntry() = 0;
@@ -131,17 +157,18 @@ class Entry {
 		}
 };
 
-Entry* getEntry(char* data, int extraEntries, infoDRET info);
+Entry* getEntry(char*, int, infoDRET, string);
 
 class File : public Entry{
 	private:
 		string ext = "";
 		int fileSize = 0;
 	public:
-		File(char* dataEntry, int numExtraEntry, infoDRET info) : Entry(dataEntry, numExtraEntry, info) {}
+		File(char* dataEntry, int numExtraEntry, infoDRET info, string rootName) : Entry(dataEntry, numExtraEntry, info, rootName) {}
 
 		void readExt() {
 			readCharacter(this->ext, this->dataEntry, 8, 3, this->numExtraEntry);
+			// trim(this->ext);
 		}
 
 		void readSize() {
@@ -157,7 +184,8 @@ class File : public Entry{
 		}
 
 		virtual void print_info() {
-			cout << "File name: " << this->name << this->ext << endl;
+			cout << "File name: " << this->name << "." << this->ext << endl;
+			cout << "Path: " << this->root << "/" << this->name << "." << this->ext << endl;
 			cout << "Size of file : " << this->fileSize << " byte" << endl;
 			Entry::print_info();
 		}
@@ -167,7 +195,7 @@ class Folder : public Entry{
 	private:
 		vector<Entry*> entries;
 	public:
-		Folder(char* dataEntry, int numExtraEntry, infoDRET info) : Entry(dataEntry, numExtraEntry, info) {}
+		Folder(char* dataEntry, int numExtraEntry, infoDRET info, string rootName) : Entry(dataEntry, numExtraEntry, info, rootName) {}
 		int getFirstSector() {
 			return info.Sb + info.Sf * info.Nf + (this->firstCluster - 2) * info.Sc;
 		}
@@ -205,7 +233,8 @@ class Folder : public Entry{
 						}
 						else {
 							infoDRET info = this->info;
-							this->entries.push_back(getEntry(entryData, extraEntries, info));
+							string path = this->root + "/" + this->name;
+							this->entries.push_back(getEntry(entryData, extraEntries, info, path));
 							entryData = new char;
 							extraEntries = 0;
 						}
@@ -216,6 +245,7 @@ class Folder : public Entry{
 
 		virtual void print_info() {
 			cout << "Folder name: " << this->name << endl;
+			cout << "Path: " << this->root << "/" << this->name << endl;
 			Entry::print_info();
 			for (Entry* entry : this->entries){
 				entry->readEntry();
@@ -224,7 +254,7 @@ class Folder : public Entry{
 		}
 };
 
-Entry* getEntry(char* data, int extraEntries, infoDRET info) {
+Entry* getEntry(char* data, int extraEntries, infoDRET info, string path) {
 	Entry* entry;
 	long offset0B = data[11 + extraEntries * 32];
 
@@ -235,10 +265,10 @@ Entry* getEntry(char* data, int extraEntries, infoDRET info) {
 	}
 
 	if(binary0B[5] == 1) {
-		entry = new File(data, extraEntries, info);
+		entry = new File(data, extraEntries, info, path);
 	}
 	else if(binary0B[4] == 1) {
-		entry = new Folder(data, extraEntries, info);
+		entry = new Folder(data, extraEntries, info, path);
 	}
 	return entry;
 }
@@ -254,7 +284,7 @@ class FAT32 {
 		long Sv = 0;
 		int Sc = 0;
 		vector <Entry*> root;
-
+		string path = "~";
 	public:
 		FAT32(const char* disk) {
 			this->disk = disk;
@@ -355,7 +385,7 @@ class FAT32 {
 						}
 						else {
 							infoDRET info = {this->Sb, this->Sf, this->Nf, this->Sc, this->disk};
-							this->root.push_back(getEntry(entryData, extraEntries, info));
+							this->root.push_back(getEntry(entryData, extraEntries, info, this->path));
 							entryData = new char;
 							extraEntries = 0;
 						}
@@ -369,8 +399,10 @@ class FAT32 {
 
 		void get_rdet_info() {
 			for(int i = 1; i < this->root.size(); i++) {
+				cout << "=========== ENTRY "  << i << " ===========\n";
 				this->root[i]->readEntry();
 				this->root[i]->print_info();
+				cout << "===============================\n";
 			}
 			cout << "Number of entry in DRET: " << root.size();
 		}
