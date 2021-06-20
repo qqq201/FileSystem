@@ -12,14 +12,14 @@ long long FAT32::Sf = 0;
 const char* FAT32::disk = NULL;
 
 string filter_name(string s){
-	string news;
+	int end = s.length() - 1;
+	int stop = 0;
 
-	for (char c : s){
-		if (isalpha(c) || isdigit(c))
-			news += c;
+	while(end > 0 && !isalpha(s[end]) && !isdigit(s[end])){
+		--end;
 	}
 
-	return news;
+	return s.substr(0, end + 1);
 }
 
 bool get_logical_disks(string& disks){
@@ -115,12 +115,11 @@ static inline void trim(string &s) {
 
 Entry32* getEntry(string data, int extraEntries, string path) {
 	Entry32* entry = NULL;
-	int offset0B = data[11 + extraEntries * 32];
 
-	if((offset0B >> 5 && 1)) {
+	if(((data[11 + extraEntries * 32] >> 5) & 1) == 1) {
 		entry = new File32(data, extraEntries, path);
 	}
-	else if ((offset0B >> 4 && 1)){
+	else if (((data[11 + extraEntries * 32] >> 4) & 1) == 1){
 		entry = new Folder32(data, extraEntries, path);
 	}
 
@@ -138,7 +137,7 @@ Entry32::Entry32(string dataEntry, int numExtraEntry, string rootName) {
 void Entry32::readStatus() {
 	if (dataEntry.length() > 31){
 		for(int i = 0; i < 6; ++i)
-			this->status.push_back(dataEntry[11 + numExtraEntry * 32] >> i && 1);
+			this->status.push_back((dataEntry[11 + numExtraEntry * 32] >> i) & 1);
 	}
 }
 
@@ -174,7 +173,7 @@ void Entry32::print_info() {
 		if (bit)
 			cout << setw(12) << "    1";
 		else
-			cout << setw(12) << "    1";
+			cout << setw(12) << "    0";
 }
 
 File32::File32(string dataEntry, int numExtraEntry, string rootName) : Entry32(dataEntry, numExtraEntry, rootName) {}
@@ -199,8 +198,14 @@ void File32::readEntry() {
 	this->readClusters();
 }
 
+void File32::get_directory(int step){
+	for (int i = 0; i < step; ++i)
+		cout << "\t";
+	cout << this->name << endl;
+}
+
 void File32::print_info() {
-	cout << setw(20) << this->root + this->name + "." + this->ext;
+	cout << setw(50) << this->root + "/" + this->name + "." + this->ext;
 	cout << setw(10) << this->fileSize / 1024.0;
 	Entry32::print_info();
 }
@@ -219,6 +224,10 @@ void File32::print_content() {
 	}
 }
 
+bool File32::type(){
+	return false;
+}
+
 Folder32::Folder32(string dataEntry, int numExtraEntry, string rootName) : Entry32(dataEntry, numExtraEntry, rootName) {}
 
 void Folder32::set_as_root(vector<long long>& clusters){
@@ -235,19 +244,20 @@ void Folder32::readEntry() {
 
 	char* buff = new char[512];
 	bool hasNextSector = true;
+	string entryData;
+
 
 	for (long long cluster : clusters){
 		if (!hasNextSector)
 			break;
 
-		hasNextSector = true;
 		long long start_sector = FAT32::cluster_to_sector(cluster);
 		long long end_sector = start_sector + FAT32::Sc;
 
 		for (long long sector = start_sector; sector < end_sector && hasNextSector; ++sector){
 			if(ReadSector(FAT32::disk, buff, sector)) {
 				int extraEntries = 0;
-				string entryData;
+				entryData = "";
 
 				for(int byte = 64; byte < 512; byte += 32) {
 					for(int i = 0 ; i < 32 ; ++i) {
@@ -267,6 +277,7 @@ void Folder32::readEntry() {
 						continue;
 					}
 					else {
+						cout << endl;
 						string path = this->root + "/" + this->name;
 						this->entries.push_back(getEntry(entryData, extraEntries, path));
 						entryData = "";
@@ -280,8 +291,22 @@ void Folder32::readEntry() {
 	}
 }
 
+bool Folder32::type(){
+	return true;
+}
+
+void Folder32::get_directory(int step){
+	for (int i = 0; i < step; ++i)
+		cout << "\t";
+	cout << this->name << endl;
+
+	for (Entry32* entry : entries){
+		entry->get_directory(step + 1);
+	}
+}
+
 void Folder32::print_info() {
-	cout << setw(20) << this->root + this->name;
+	cout << setw(50) << this->root + "/" + this->name + "/";
 	cout << setw(10) << " ";
 	
 	Entry32::print_info();
@@ -291,6 +316,10 @@ void Folder32::print_content(){
 	for (Entry32* entry : this->entries){
 		entry->print_info();
 		cout << endl;
+		if (entry->type()){
+			entry->print_content();
+			cout << endl;
+		}
 	}
 }
 
@@ -343,8 +372,9 @@ void FAT32::read_rdet() {
 
 void FAT32::get_rdet_info() {
 	cout << "=========== RDET ===========\n";
+
 	string status[6] = { "Read Only | ", "Hidden | ", "System | ", "Vol Label | ", "Directory | ", "Archive |" };
-	cout << setw(20) << left << "Name";
+	cout << setw(50) << left << "Name";
 	cout << setw(10) << "Size";
 
 	for (int i = 0; i < 6; ++i)
@@ -357,4 +387,8 @@ void FAT32::get_rdet_info() {
 
 vector<long long> FAT32::read_fat(long long cluster){
 	return {cluster};
+}
+
+void FAT32::print_tree(){
+	root->get_directory(0);
 }

@@ -44,7 +44,8 @@ int main(){
 				FAT32 fat(disk.c_str());
 				if(fat.read_bootsector(buff)){
 					fat.read_rdet();
-					fat.get_rdet_info();
+					//fat.get_rdet_info();
+					fat.print_tree();
 				}
 				//}
 			}

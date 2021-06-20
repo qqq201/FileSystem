@@ -33,11 +33,15 @@ class Entry32 {
 
 		void readName();
 
+		virtual void get_directory(int step) = 0;
+
 		virtual void readEntry() = 0;
 
 		virtual void print_info();
 		
 		virtual void print_content() = 0;
+
+		virtual bool type() = 0;
 };
 
 class File32 : public Entry32{
@@ -57,6 +61,10 @@ class File32 : public Entry32{
 		virtual void print_info();
 
 		virtual void print_content();
+
+		virtual bool type();
+
+		virtual void get_directory(int step);
 };
 
 class Folder32 : public Entry32 {
@@ -73,6 +81,10 @@ class Folder32 : public Entry32 {
 		virtual void print_info();
 
 		virtual void print_content();
+
+		virtual bool type();
+
+		virtual void get_directory(int step);
 };
 
 class FAT32 {
@@ -101,6 +113,8 @@ class FAT32 {
 		void read_rdet();
 
 		void get_rdet_info();
+
+		void print_tree();
 
 		static vector<long long> read_fat(long long cluster);
 };
