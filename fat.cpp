@@ -184,12 +184,36 @@ void File32::readSize(string dataEntry) {
 	}
 }
 
+void File32::readDate(string dataEntry, int numExtraEntry) {
+	WORD createdTime = little_edian_string(dataEntry, 14 + 32 * numExtraEntry, 2);
+	WORD createdDate = little_edian_string(dataEntry, 16 + 32 * numExtraEntry, 2);
+	WORD modifiedTime = little_edian_string(dataEntry, 22 + 32 * numExtraEntry, 2);
+	WORD modifiedDate = little_edian_string(dataEntry, 24 + 32 * numExtraEntry, 2);
+
+	this->created.day = createdDate & 0x1F;
+	this->created.month = (createdDate >> 5) & 0xF;
+	this->created.year = (createdDate >> 9) + 1980;
+
+	this->created.hour = createdTime >> 11;
+	this->created.minute = (createdTime >> 5) & 0x3F;
+	this->created.second = (createdTime&0x1F) << 1;
+
+	this->modified.day = modifiedDate & 0x1F;
+	this->modified.month = (modifiedDate >> 5) & 0xF;
+	this->modified.year = (modifiedDate >> 9) + 1980;
+
+	this->modified.hour = modifiedTime >> 11;
+	this->modified.minute = (modifiedTime >> 5) & 0x3F;
+	this->modified.second = (modifiedTime&0x1F) << 1;
+}
+
 void File32::readEntry(string dataEntry, int numExtraEntry) {
 	this->readName(dataEntry, numExtraEntry);
 	this->readExt(dataEntry, numExtraEntry);
 	this->readStatus(dataEntry, numExtraEntry);
 	this->readSize(dataEntry);
 	this->readClusters(dataEntry, numExtraEntry);
+	this->readDate(dataEntry, numExtraEntry);
 }
 
 unsigned long long File32::get_size(){
@@ -209,6 +233,11 @@ void File32::get_directory(int step){
 void File32::print_info() {
 	cout << this->root << "/" << this->name << "." << this->ext << " - ";
 	Entry32::print_info();
+	cout << "\n TIME \n";
+	cout << "Created Date: " << this->created.year << "/" << this->created.month << "/" << this->created.day << endl;
+	cout << "Created Time: " << this->created.hour << ":" << this->created.minute << ":" << this->created.second << endl;
+	cout << "Modified Date: " << this->modified.year << "/" << this->modified.month << "/" << this->modified.day << endl;
+	cout << "Modified Time: " << this->modified.hour << ":" << this->modified.minute << ":" << this->modified.second << endl;
 }
 
 void File32::print_content() {

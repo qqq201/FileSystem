@@ -15,6 +15,15 @@ using namespace std;
 //extern const char* main_disk;
 //extern int default_sector_size;
 
+struct Date {
+	int year;
+	int month;
+	int day;
+	int hour;
+	int minute;
+	int second;
+};
+
 class Entry32 {
 	protected:
 		vector<DWORD> clusters;
@@ -32,8 +41,6 @@ class Entry32 {
 
 		void readName(string dataEntry, int numExtraEntry);
 
-		void readDate(string dataEntry, int numExtraEntry);
-
 		virtual void get_directory(int step) = 0;
 
 		virtual unsigned long long get_size() = 0;
@@ -50,13 +57,16 @@ class Entry32 {
 class File32 : public Entry32{
 	private:
 		string ext = "";
-
+		Date created;
+		Date modified;
 	public:
 		File32(string rootName);
 
 		void readExt(string dataEntry, int numExtraEntry);
 
 		void readSize(string dataEntry);
+
+		void readDate(string dataEntry, int numExtraEntry);
 
 		virtual unsigned long long get_size();
 
