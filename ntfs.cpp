@@ -62,38 +62,39 @@ void print_sector(char*& buff){
 	cout << endl;
 }
 
-long little_edian_read(char* data, int start, int nbyte){
-	std::stringstream ss;
+unsigned long long little_edian_char(char* data, int start, int nbyte){
+	stringstream ss;
 	for (int i = start + nbyte - 1; i >= start; --i){
 		ss << hex_chars[ (data[i] & 0xF0) >> 4 ];
 		ss << hex_chars[ (data[i] & 0x0F) >> 0 ];
 	}
 
-	return stoi(ss.str(), 0, 16);
+	char* p;
+	return strtol(ss.str().c_str(), &p, 16);
 }
 
-class Entry {
+class EntryNTFS {
 	protected:
 		string name;
 	public:
-		Entry() {}
+		EntryNTFS() {}
 		void print_info() {}
 };
 
-class File : protected Entry{
+class FileNTFS : protected EntryNTFS{
 	private:
 	public:
-		File() : Entry() {}
+		FileNTFS() : EntryNTFS() {}
 		void print_info() {}
 };
 
-class Folder : protected Entry{
+class FolderNTFS : protected EntryNTFS{
 	private:
-		vector<Entry*> entries;
+		vector<EntryNTFS*> entries;
 	public:
-		Folder() : Entry() {}
+		FolderNTFS() : EntryNTFS() {}
 		void print_info() {
-			for (Entry* entry : this->entries){
+			for (EntryNTFS* entry : this->entries){
 				entry->print_info();
 			}
 		}
@@ -102,14 +103,12 @@ class Folder : protected Entry{
 class NTFS {
 	private:
 		const char* disk = NULL;
-		uint16_t first_cluster = 0;
-		uint8_t Sc = 0;
-		uint16_t Sb = 0;
-		uint16_t St = 0;
-		uint16_t h = 0;
-		long long Sv = 0;
+		unsigned long long first_cluster = 0;
+		unsigned long long Sc = 0;	// sector per cluster
+		unsigned long long Sb = 0;	// size of boost sector
+		long long Sv = 0;			// size of volume
 		long long mft_cluster = 0;
-		vector<Entry*> root;
+		FolderNTFS* root;
 
 	public:
 		NTFS(const char* disk) {
@@ -117,7 +116,7 @@ class NTFS {
 		}
 
 		void read_pbs(char* buff) {
-			
+			// Bytes Per Sector
 		}
 
 		void read_mft() {
