@@ -168,6 +168,13 @@ void Entry32::print_info() {
 	for (int i = 0; i < 6; ++i)
 		if (this->status[i])
 			cout << status_labels[i] << "|";
+
+	cout << "\n TIME \n";
+	cout << setfill('0');
+	cout << "Created Date: " << setw(2) << this->created.day << "/" << setw(2) << this->created.month << "/" << this->created.year <<  endl;
+	cout << "Created Time: " << setw(2) << this->created.hour << ":" << setw(2) << this->created.minute << ":" << setw(2) << this->created.second << endl;
+	cout << "Modified Date: " << setw(2) << this->modified.day << "/" << setw(2) << this->modified.month << "/" << this->modified.year << endl;
+	cout << "Modified Time: " << setw(2) << this->modified.hour << ":" << setw(2) << this->modified.minute << ":" << setw(2) << this->modified.second << endl;
 }
 
 File32::File32(string rootName) : Entry32(rootName) {}
@@ -184,12 +191,38 @@ void File32::readSize(string dataEntry) {
 	}
 }
 
+void Entry32::readDate(string dataEntry, int numExtraEntry) {
+	WORD createdTime = little_edian_string(dataEntry, 14 + 32 * numExtraEntry, 2);
+	WORD createdDate = little_edian_string(dataEntry, 16 + 32 * numExtraEntry, 2);
+	WORD modifiedTime = little_edian_string(dataEntry, 22 + 32 * numExtraEntry, 2);
+	WORD modifiedDate = little_edian_string(dataEntry, 24 + 32 * numExtraEntry, 2);
+
+	cout << createdDate << endl;
+
+	this->created.day = createdDate & 0x1F;
+	this->created.month = (createdDate >> 5) & 0xF;
+	this->created.year = (createdDate >> 9) + 1980;
+
+	this->created.hour = createdTime >> 11;
+	this->created.minute = (createdTime >> 5) & 0x3F;
+	this->created.second = (createdTime&0x1F) << 1;
+
+	this->modified.day = modifiedDate & 0x1F;
+	this->modified.month = (modifiedDate >> 5) & 0xF;
+	this->modified.year = (modifiedDate >> 9) + 1980;
+
+	this->modified.hour = modifiedTime >> 11;
+	this->modified.minute = (modifiedTime >> 5) & 0x3F;
+	this->modified.second = (modifiedTime&0x1F) << 1;
+}
+
 void File32::readEntry(string dataEntry, int numExtraEntry) {
 	this->readName(dataEntry, numExtraEntry);
 	this->readExt(dataEntry, numExtraEntry);
 	this->readStatus(dataEntry, numExtraEntry);
 	this->readSize(dataEntry);
 	this->readClusters(dataEntry, numExtraEntry);
+	this->readDate(dataEntry, numExtraEntry);
 }
 
 unsigned long long File32::get_size(){
@@ -242,6 +275,7 @@ void Folder32::readEntry(string dataEntry, int numExtraEntry) {
 		this->readName(dataEntry, numExtraEntry);
 		this->readStatus(dataEntry, numExtraEntry);
 		this->readClusters(dataEntry, numExtraEntry);
+		this->readDate(dataEntry, numExtraEntry);
 	}
 
 	char* buff = new char[512];
@@ -280,6 +314,7 @@ void Folder32::readEntry(string dataEntry, int numExtraEntry) {
 					}
 					else {
 						string path = this->root + "/" + this->name;
+						// print_sector(buff);
 						this->entries.push_back(getEntry(entryData, extraEntries, path));
 						entryData = "";
 						extraEntries = 0;

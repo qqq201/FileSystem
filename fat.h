@@ -15,12 +15,23 @@ using namespace std;
 //extern const char* main_disk;
 //extern int default_sector_size;
 
+struct Date {
+	int year;
+	int month;
+	int day;
+	int hour;
+	int minute;
+	int second;
+};
+
 class Entry32 {
 	protected:
 		vector<DWORD> clusters;
 		vector<bool> status;
 		string name;
 		string root;
+		Date created;
+		Date modified;
 		unsigned long long size = 0;
 
 	public:
