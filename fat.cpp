@@ -161,6 +161,29 @@ void Entry32::readName(string dataEntry, int numExtraEntry) {
 	}
 }
 
+void Entry32::readDate(string dataEntry, int numExtraEntry) {
+	WORD createdTime = little_edian_string(dataEntry, 14 + 32 * numExtraEntry, 2);
+	WORD createdDate = little_edian_string(dataEntry, 16 + 32 * numExtraEntry, 2);
+	WORD modifiedTime = little_edian_string(dataEntry, 22 + 32 * numExtraEntry, 2);
+	WORD modifiedDate = little_edian_string(dataEntry, 24 + 32 * numExtraEntry, 2);
+
+	this->created.day = createdDate & 0x1F;
+	this->created.month = (createdDate >> 5) & 0xF;
+	this->created.year = (createdDate >> 9) + 1980;
+
+	this->created.hour = createdTime >> 11;
+	this->created.minute = (createdTime >> 5) & 0x3F;
+	this->created.second = (createdTime&0x1F) << 1;
+
+	this->modified.day = modifiedDate & 0x1F;
+	this->modified.month = (modifiedDate >> 5) & 0xF;
+	this->modified.year = (modifiedDate >> 9) + 1980;
+
+	this->modified.hour = modifiedTime >> 11;
+	this->modified.minute = (modifiedTime >> 5) & 0x3F;
+	this->modified.second = (modifiedTime&0x1F) << 1;
+}
+
 void Entry32::print_info() {
 	cout << this->size << " Bytes - ";
 
@@ -189,31 +212,6 @@ void File32::readSize(string dataEntry) {
 	if (dataEntry.length() > 31){
 		this->size = little_edian_string(dataEntry, 28, 4);
 	}
-}
-
-void Entry32::readDate(string dataEntry, int numExtraEntry) {
-	WORD createdTime = little_edian_string(dataEntry, 14 + 32 * numExtraEntry, 2);
-	WORD createdDate = little_edian_string(dataEntry, 16 + 32 * numExtraEntry, 2);
-	WORD modifiedTime = little_edian_string(dataEntry, 22 + 32 * numExtraEntry, 2);
-	WORD modifiedDate = little_edian_string(dataEntry, 24 + 32 * numExtraEntry, 2);
-
-	cout << createdDate << endl;
-
-	this->created.day = createdDate & 0x1F;
-	this->created.month = (createdDate >> 5) & 0xF;
-	this->created.year = (createdDate >> 9) + 1980;
-
-	this->created.hour = createdTime >> 11;
-	this->created.minute = (createdTime >> 5) & 0x3F;
-	this->created.second = (createdTime&0x1F) << 1;
-
-	this->modified.day = modifiedDate & 0x1F;
-	this->modified.month = (modifiedDate >> 5) & 0xF;
-	this->modified.year = (modifiedDate >> 9) + 1980;
-
-	this->modified.hour = modifiedTime >> 11;
-	this->modified.minute = (modifiedTime >> 5) & 0x3F;
-	this->modified.second = (modifiedTime&0x1F) << 1;
 }
 
 void File32::readEntry(string dataEntry, int numExtraEntry) {
