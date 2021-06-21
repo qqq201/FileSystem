@@ -61,13 +61,16 @@ class Entry32 {
 class File32 : public Entry32{
 	private:
 		string ext = "";
-
+		Date created;
+		Date modified;
 	public:
 		File32(string rootName);
 
 		void readExt(string dataEntry, int numExtraEntry);
 
 		void readSize(string dataEntry);
+
+
 
 		virtual unsigned long long get_size();
 
