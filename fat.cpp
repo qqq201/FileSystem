@@ -2,21 +2,34 @@
 
 char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 
-long long default_sector_size = 512;
+WORD default_sector_size = 512;
 
 int FAT32::Sc = 0;
-long long FAT32::Sb = 0;
+WORD FAT32::Sb = 0;
 int FAT32::Nf = 0;
-long long FAT32::Sv = 0;
-long long FAT32::Sf = 0;
+DWORD FAT32::Sv = 0;
+DWORD FAT32::Sf = 0;
 const char* FAT32::disk = NULL;
 
-string filter_name(string s){
+string filter_name(string s, bool subentry){
 	int end = s.length() - 1;
 	int stop = 0;
 
-	while(end > 0 && !isalpha(s[end]) && !isdigit(s[end])){
+	while(end > 0 && (!isascii(s[end]) || s[end] == ' ')){
 		--end;
+	}
+
+	//if has sub entries, cut the extension
+	if (subentry){
+		int temp = end;
+
+		while (end > 0 && s[end] != '.')
+			--end;
+
+		--end;
+		//if doesn't have extension, restore end
+		if (end < 1)
+			end = temp;
 	}
 
 	return s.substr(0, end + 1);
@@ -37,7 +50,7 @@ bool get_logical_disks(string& disks){
 		return false;
 }
 
-bool ReadSector(const char *disk, char*& buff, unsigned int sector) {
+bool ReadSector(const char *disk, char*& buff, DWORD sector) {
 	DWORD dwRead;
 	HANDLE hDisk = CreateFile(disk,GENERIC_READ,FILE_SHARE_VALID_FLAGS,0,OPEN_EXISTING,0,0);
 	if(hDisk == INVALID_HANDLE_VALUE){
@@ -74,7 +87,7 @@ void print_sector(char*& buff){
 	cout << endl;
 }
 
-long long little_edian_char(char* data, int start, int nbyte){
+unsigned long long little_edian_char(char* data, int start, int nbyte){
 	stringstream ss;
 	for (int i = start + nbyte - 1; i >= start; --i){
 		ss << hex_chars[ (data[i] & 0xF0) >> 4 ];
@@ -85,128 +98,116 @@ long long little_edian_char(char* data, int start, int nbyte){
 	return strtol(ss.str().c_str(), &p, 16);
 }
 
-long long little_edian_string(string data, int start, int nbyte){
+unsigned long long little_edian_string(string data, int start, int nbyte){
 	stringstream ss;
 	for (int i = start + nbyte - 1; i >= start; --i){
 		ss << hex_chars[ (data[i] & 0xF0) >> 4 ];
 		ss << hex_chars[ (data[i] & 0x0F) >> 0 ];
 	}
- 
+
 	char* p;
 	return strtol(ss.str().c_str(), &p, 16);
-}
-
-static inline void ltrim(string &s) {
-    s.erase(s.begin(), find_if(s.begin(), s.end(), [](unsigned char ch) {
-        return !isspace(ch);
-    }));
-}
-
-static inline void rtrim(string &s) {
-    s.erase(find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
-        return !isspace(ch);
-    }).base(), s.end());
-}
-
-static inline void trim(string &s) {
-    ltrim(s);
-    rtrim(s);
 }
 
 Entry32* getEntry(string data, int extraEntries, string path) {
 	Entry32* entry = NULL;
 
 	if(((data[11 + extraEntries * 32] >> 5) & 1) == 1) {
-		entry = new File32(data, extraEntries, path);
+		entry = new File32(path);
 	}
 	else if (((data[11 + extraEntries * 32] >> 4) & 1) == 1){
-		entry = new Folder32(data, extraEntries, path);
+		entry = new Folder32(path);
 	}
 
-	entry->readEntry();
+	entry->readEntry(data, extraEntries);
 
 	return entry;
 }
 
-Entry32::Entry32(string dataEntry, int numExtraEntry, string rootName) {
-	this->dataEntry = dataEntry;
-	this->numExtraEntry = numExtraEntry;
+Entry32::Entry32(string rootName) {
 	this->root = rootName;
 }
 
-void Entry32::readStatus() {
+void Entry32::readStatus(string dataEntry, int numExtraEntry) {
 	if (dataEntry.length() > 31){
 		for(int i = 0; i < 6; ++i)
 			this->status.push_back((dataEntry[11 + numExtraEntry * 32] >> i) & 1);
 	}
 }
 
-void Entry32::readClusters() {
+void Entry32::readClusters(string dataEntry, int numExtraEntry) {
 	if (dataEntry.length() > 31){
-		long long high = little_edian_string(this->dataEntry, 20 + this->numExtraEntry * 32, 2);
-		long long low = little_edian_string(this->dataEntry, 26 + this->numExtraEntry * 32, 2);
+		DWORD high = little_edian_string(dataEntry, 20 + numExtraEntry * 32, 2);
+		DWORD low = little_edian_string(dataEntry, 26 + numExtraEntry * 32, 2);
 
 		this->clusters = FAT32::read_fat(high * 65536 + low);
 	}
 }
 
-void Entry32::readName() {
+void Entry32::readName(string dataEntry, int numExtraEntry) {
 	if (dataEntry.length() > 31){
-		if(this->numExtraEntry == 0) {
-			this->name = this->dataEntry.substr(0, 8);
+		if(numExtraEntry == 0) {
+			this->name = dataEntry.substr(0, 8);
+			this->name = filter_name(this->name, false);
 		}
 		else {
-			for(int extraEntry = this->numExtraEntry - 1; extraEntry >= 0 ; --extraEntry) {
-				this->name += this->dataEntry.substr(1 + extraEntry * 32, 10);
-				this->name += this->dataEntry.substr(14 + extraEntry * 32, 12);
-				this->name += this->dataEntry.substr(28 + extraEntry * 32, 4);
+			for(int extraEntry = numExtraEntry - 1; extraEntry >= 0 ; --extraEntry) {
+				this->name += dataEntry.substr(1 + extraEntry * 32, 10);
+				this->name += dataEntry.substr(14 + extraEntry * 32, 12);
+				this->name += dataEntry.substr(28 + extraEntry * 32, 4);
 			}
+			this->name = filter_name(this->name, true);
 		}
 	}
-
-	this->name = filter_name(this->name);
-	// trim(this->name);
 }
 
 void Entry32::print_info() {
-	for (bool bit : status)
-		if (bit)
-			cout << setw(12) << "    1";
-		else
-			cout << setw(12) << "    0";
+	cout << this->size << " Bytes - ";
+
+	string status_labels[6] = { "Read Only", "Hidden", "System", "Vol Label", "Directory", "Archive" };
+	for (int i = 0; i < 6; ++i)
+		if (this->status[i])
+			cout << status_labels[i] << "|";
 }
 
-File32::File32(string dataEntry, int numExtraEntry, string rootName) : Entry32(dataEntry, numExtraEntry, rootName) {}
+File32::File32(string rootName) : Entry32(rootName) {}
 
-void File32::readExt() {
+void File32::readExt(string dataEntry, int numExtraEntry) {
 	if (dataEntry.length() > 31)
-		this->ext = this->dataEntry.substr(8 + 32 * this->numExtraEntry, 3);
+		this->ext = dataEntry.substr(8 + 32 * numExtraEntry, 3);
 	// trim(this->ext);
 }
 
-void File32::readSize() {
+void File32::readSize(string dataEntry) {
 	if (dataEntry.length() > 31){
-		this->fileSize = little_edian_string(this->dataEntry, 28, 4);
+		this->size = little_edian_string(dataEntry, 28, 4);
 	}
 }
 
-void File32::readEntry() {
-	this->readName();
-	this->readExt();
-	this->readStatus();
-	this->readSize();
-	this->readClusters();
+void File32::readEntry(string dataEntry, int numExtraEntry) {
+	this->readName(dataEntry, numExtraEntry);
+	this->readExt(dataEntry, numExtraEntry);
+	this->readStatus(dataEntry, numExtraEntry);
+	this->readSize(dataEntry);
+	this->readClusters(dataEntry, numExtraEntry);
+}
+
+unsigned long long File32::get_size(){
+	return this->size;
 }
 
 void File32::get_directory(int step){
 	for (int i = 0; i < step; ++i)
-		cout << "\t";
-	cout << this->name << endl;
+		if (i == step - 1)
+			cout << "├━━━ ";
+		else
+			cout << "│    ";
+
+	cout << this->name + "." + this->ext << endl;
 }
 
 void File32::print_info() {
-	cout << setw(50) << this->root + "/" + this->name + "." + this->ext;
-	cout << setw(10) << this->fileSize / 1024.0;
+	cout << this->root << "/" << this->name << "." << this->ext << " - ";
 	Entry32::print_info();
 }
 
@@ -228,18 +229,19 @@ bool File32::type(){
 	return false;
 }
 
-Folder32::Folder32(string dataEntry, int numExtraEntry, string rootName) : Entry32(dataEntry, numExtraEntry, rootName) {}
+Folder32::Folder32(string rootName) : Entry32(rootName) {}
 
-void Folder32::set_as_root(vector<long long>& clusters){
+void Folder32::set_as_root(vector<DWORD>& clusters){
 	isRoot = true;
 	this->clusters = clusters;
+	this->name = "~";
 }
 
-void Folder32::readEntry() {
+void Folder32::readEntry(string dataEntry, int numExtraEntry) {
 	if (!isRoot){
-		this->readName();
-		this->readStatus();
-		this->readClusters();
+		this->readName(dataEntry, numExtraEntry);
+		this->readStatus(dataEntry, numExtraEntry);
+		this->readClusters(dataEntry, numExtraEntry);
 	}
 
 	char* buff = new char[512];
@@ -247,12 +249,12 @@ void Folder32::readEntry() {
 	string entryData;
 
 
-	for (long long cluster : clusters){
+	for (DWORD cluster : clusters){
 		if (!hasNextSector)
 			break;
 
-		long long start_sector = FAT32::cluster_to_sector(cluster);
-		long long end_sector = start_sector + FAT32::Sc;
+		DWORD start_sector = FAT32::cluster_to_sector(cluster);
+		DWORD end_sector = start_sector + FAT32::Sc;
 
 		for (long long sector = start_sector; sector < end_sector && hasNextSector; ++sector){
 			if(ReadSector(FAT32::disk, buff, sector)) {
@@ -277,7 +279,6 @@ void Folder32::readEntry() {
 						continue;
 					}
 					else {
-						cout << endl;
 						string path = this->root + "/" + this->name;
 						this->entries.push_back(getEntry(entryData, extraEntries, path));
 						entryData = "";
@@ -289,16 +290,28 @@ void Folder32::readEntry() {
 				hasNextSector = false;
 		}
 	}
+
+	this->get_size();
 }
 
 bool Folder32::type(){
 	return true;
 }
 
+unsigned long long Folder32::get_size(){
+	for (Entry32* entry : entries)
+			this->size += entry->get_size();
+
+	return this->size;
+}
+
 void Folder32::get_directory(int step){
 	for (int i = 0; i < step; ++i)
-		cout << "\t";
-	cout << this->name << endl;
+		if (i == step - 1)
+			cout << "├━━━ ";
+		else
+			cout << "│    ";
+	cout << this->name << "/" << endl;
 
 	for (Entry32* entry : entries){
 		entry->get_directory(step + 1);
@@ -306,9 +319,8 @@ void Folder32::get_directory(int step){
 }
 
 void Folder32::print_info() {
-	cout << setw(50) << this->root + "/" + this->name + "/";
-	cout << setw(10) << " ";
-	
+	cout << this->root + "/" + this->name + "/ - ";
+
 	Entry32::print_info();
 }
 
@@ -330,7 +342,7 @@ FAT32::~FAT32() {
 	root = NULL;
 }
 
-long long FAT32::cluster_to_sector(long long cluster){
+DWORD FAT32::cluster_to_sector(DWORD cluster){
 	return Sb + Nf * Sf + (cluster - 2) * Sc;
 }
 
@@ -341,7 +353,7 @@ bool FAT32::read_bootsector(char* data){
 		Nf = data[16];
 		Sf = little_edian_char(data, 36, 4);
 
-		long long rdet_first_cluster = little_edian_char(data, 44, 4);
+		DWORD rdet_first_cluster = little_edian_char(data, 44, 4);
 		rdet_clusters = read_fat(rdet_first_cluster);
 
 		Sv = little_edian_char(data, 32, 4);
@@ -355,6 +367,7 @@ bool FAT32::read_bootsector(char* data){
 }
 
 void FAT32::get_bs_info(){
+	cout << "========= BOOTSECTOR ========\n";
 	cout << "Sector size: " << default_sector_size << " Bytes\n";
 	cout << "Volume size: " << Sv / 2097152.0 << " GB\n";
 	cout << "Boot sector size: " << FAT32::Sb << " Sectors\n";
@@ -362,30 +375,22 @@ void FAT32::get_bs_info(){
 	cout << "Fat size: " << Sf << " Sectors\n";
 	cout << "Sectors per cluster: " << Sc << endl;
 	cout << "RDET first cluster: " << rdet_clusters[0] << endl;
+	cout << "=============================\n";
 }
 
 void FAT32::read_rdet() {
-	root = new Folder32("", 0, "~");
+	root = new Folder32("");
 	root->set_as_root(rdet_clusters);
-	root->readEntry();
+	root->readEntry("", 0);
 }
 
 void FAT32::get_rdet_info() {
 	cout << "=========== RDET ===========\n";
-
-	string status[6] = { "Read Only | ", "Hidden | ", "System | ", "Vol Label | ", "Directory | ", "Archive |" };
-	cout << setw(50) << left << "Name";
-	cout << setw(10) << "Size";
-
-	for (int i = 0; i < 6; ++i)
-		cout << setw(12) << status[i];
-	cout << endl;
-
 	this->root->print_content();
 	cout << "=============================\n";
 }
 
-vector<long long> FAT32::read_fat(long long cluster){
+vector<DWORD> FAT32::read_fat(DWORD cluster){
 	return {cluster};
 }
 

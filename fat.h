@@ -17,28 +17,31 @@ using namespace std;
 
 class Entry32 {
 	protected:
-		string dataEntry;
-		int numExtraEntry = 0;
-		vector<long long> clusters;
+		vector<DWORD> clusters;
 		vector<bool> status;
 		string name;
 		string root;
+		unsigned long long size = 0;
 
 	public:
-		Entry32(string dataEntry, int numExtraEntry, string rootName);
+		Entry32(string rootName);
 
-		void readStatus();
+		void readStatus(string dataEntry, int numExtraEntry);
 
-		void readClusters();
+		void readClusters(string dataEntry, int numExtraEntry);
 
-		void readName();
+		void readName(string dataEntry, int numExtraEntry);
+
+		void readDate(string dataEntry, int numExtraEntry);
 
 		virtual void get_directory(int step) = 0;
 
-		virtual void readEntry() = 0;
+		virtual unsigned long long get_size() = 0;
+
+		virtual void readEntry(string dataEntry, int numExtraEntry) = 0;
 
 		virtual void print_info();
-		
+
 		virtual void print_content() = 0;
 
 		virtual bool type() = 0;
@@ -47,16 +50,17 @@ class Entry32 {
 class File32 : public Entry32{
 	private:
 		string ext = "";
-		long long fileSize = 0;
 
 	public:
-		File32(string dataEntry, int numExtraEntry, string rootName);
+		File32(string rootName);
 
-		void readExt();
+		void readExt(string dataEntry, int numExtraEntry);
 
-		void readSize();
+		void readSize(string dataEntry);
 
-		virtual void readEntry();
+		virtual unsigned long long get_size();
+
+		virtual void readEntry(string dataEntry, int numExtraEntry);
 
 		virtual void print_info();
 
@@ -72,11 +76,13 @@ class Folder32 : public Entry32 {
 		vector<Entry32*> entries;
 		bool isRoot = false;
 	public:
-		Folder32(string dataEntry, int numExtraEntry, string rootName);
+		Folder32(string rootName);
 
-		void set_as_root(vector<long long>& clusters);
+		void set_as_root(vector<DWORD>& clusters);
 
-		virtual void readEntry();
+		virtual unsigned long long get_size();
+
+		virtual void readEntry(string dataEntry, int numExtraEntry);
 
 		virtual void print_info();
 
@@ -89,22 +95,22 @@ class Folder32 : public Entry32 {
 
 class FAT32 {
 	private:
-		vector<long long> rdet_clusters;
+		vector<DWORD> rdet_clusters;
 		Folder32* root = NULL;
 
 	public:
 		static const char* disk;
 		static int Sc;
-		static long long Sb;
+		static WORD Sb;
 		static int Nf;
-		static long long Sv;
-		static long long Sf;
+		static DWORD Sv;
+		static DWORD Sf;
 
 		FAT32(const char* disk);
-		
+
 		~FAT32();
 
-		static long long cluster_to_sector(long long cluster);
+		static DWORD cluster_to_sector(DWORD cluster);
 
 		bool read_bootsector(char* data);
 
@@ -116,30 +122,21 @@ class FAT32 {
 
 		void print_tree();
 
-		static vector<long long> read_fat(long long cluster);
+		static vector<DWORD> read_fat(DWORD cluster);
 };
 
 Entry32* getEntry(string data, int extraEntries, string path);
 
 bool get_logical_disks(string& disks);
 
-bool ReadSector(const char *disk, char*& buff, unsigned int sector);
+bool ReadSector(const char *disk, char*& buff, DWORD sector);
 
 void print_sector(char*& buff);
 
-long long little_edian_char(char* data, int start, int nbyte);
+unsigned long long little_edian_char(char* data, int start, int nbyte);
 
-long long little_edian_string(string data, int start, int nbyte);
+unsigned long long little_edian_string(string data, int start, int nbyte);
 
-//left
-static inline void ltrim(string &s);
-
-//right
-static inline void rtrim(string &s);
-
-//both sides
-static inline void trim(string &s);
-
-string filter_name(string s);
+string filter_name(string s, bool subentry);
 
 #endif

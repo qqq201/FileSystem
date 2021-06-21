@@ -14,7 +14,7 @@ int main(){
 		//list drives
 		cout << "Your current disks:\n";
 		for (char disk : disks){
-			cout << "└- " << disk << ":\\\n│\n";
+			cout << "├━ " << disk << ":\\\n│\n";
 		}
 
 		//select drive
@@ -43,8 +43,9 @@ int main(){
 				//if (Filesystem.compare("FAT32") == 0){
 				FAT32 fat(disk.c_str());
 				if(fat.read_bootsector(buff)){
+					fat.get_bs_info();
 					fat.read_rdet();
-					//fat.get_rdet_info();
+					fat.get_rdet_info();
 					fat.print_tree();
 				}
 				//}
@@ -63,4 +64,3 @@ int main(){
 	cout << "\nPress any key to exit...";
 	cin.get();
 }
-
