@@ -8,7 +8,7 @@
 using namespace std;
 
 char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
-int default_sector_size = 512;
+WORD default_sector_size = 512;
 
 bool get_logical_disks(string& disks){
 	DWORD mydrives = 64;// buffer length
@@ -42,7 +42,7 @@ bool ReadSector(const char *disk, char*& buff, unsigned int sector) {
 void print_sector(char*& buff){
 	for (int i = 0; i < default_sector_size; ++i){
 		if (i % 16 == 0){
-			cout << setfill('0') << setw(7) << hex << i / 16 << "0: ";
+			cout << setfill('0') << setw(7) << hex_chars[ ((i / 16) & 0xF0) >> 4 ] << hex_chars[ ((i / 16) & 0x0F) >> 0 ] << "0: ";
 		}
 
 		cout << hex_chars[ (buff[i] & 0xF0) >> 4 ];
@@ -104,7 +104,7 @@ class NTFS {
 	private:
 		const char* disk = NULL;
 		unsigned long long first_cluster = 0;
-		unsigned long long Sc = 0;	// sector per cluster
+		unsigned long long Sc = 0;	// sector per cluster - unit: 
 		unsigned long long Sb = 0;	// size of boost sector
 		long long Sv = 0;			// size of volume
 		long long mft_cluster = 0;
@@ -116,7 +116,10 @@ class NTFS {
 		}
 
 		void read_pbs(char* buff) {
-			// Bytes Per Sector
+			print_sector(buff);
+			default_sector_size = little_edian_char(buff, 11, 2);
+			cout << '\n' << "default_sector_size: "<< default_sector_size << endl;
+			
 		}
 
 		void read_mft() {
