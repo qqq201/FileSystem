@@ -30,6 +30,7 @@ class Entry32 {
 		vector<bool> status;
 		string name;
 		string root;
+		bool isDeleted;
 		Date created;
 		Date modified;
 		unsigned long long size = 0;
@@ -38,6 +39,8 @@ class Entry32 {
 		Entry32(string rootName);
 
 		void readStatus(string dataEntry, int numExtraEntry);
+
+		void readState(string dataEntry, int numExtraEntry);
 
 		void readClusters(string dataEntry, int numExtraEntry);
 
