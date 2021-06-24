@@ -325,7 +325,7 @@ void Folder32::readEntry(string dataEntry, int numExtraEntry) {
 					}
 					else {
 						string path = this->root + "/" + this->name;
-						// print_sector(buff);
+						print_sector(buff);
 						this->entries.push_back(getEntry(entryData, extraEntries, path));
 						entryData = "";
 						extraEntries = 0;
