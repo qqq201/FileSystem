@@ -135,6 +135,15 @@ void Entry32::readStatus(string dataEntry, int numExtraEntry) {
 	}
 }
 
+void Entry32::readState(string dataEntry, int numExtraEntry) {
+	if(dataEntry.length() > 31){
+		if(little_edian_string(dataEntry, 0 + numExtraEntry * 32, 1) == 229)
+			this->isDeleted = true;
+		else
+			this->isDeleted = false;
+	}
+}
+
 void Entry32::readClusters(string dataEntry, int numExtraEntry) {
 	if (dataEntry.length() > 31){
 		DWORD high = little_edian_string(dataEntry, 20 + numExtraEntry * 32, 2);
@@ -220,6 +229,7 @@ void File32::readEntry(string dataEntry, int numExtraEntry) {
 	this->readSize(dataEntry);
 	this->readClusters(dataEntry, numExtraEntry);
 	this->readDate(dataEntry, numExtraEntry);
+	this->readState(dataEntry, numExtraEntry);
 }
 
 unsigned long long File32::get_size(){
@@ -237,6 +247,9 @@ void File32::get_directory(int step){
 }
 
 void File32::print_info() {
+	if(this->isDeleted) {
+		cout << "xxx FILE IS DELETED xxx" << endl;
+	}
 	cout << this->root << "/" << this->name << "." << this->ext << " - ";
 	Entry32::print_info();
 }
@@ -273,6 +286,7 @@ void Folder32::readEntry(string dataEntry, int numExtraEntry) {
 		this->readStatus(dataEntry, numExtraEntry);
 		this->readClusters(dataEntry, numExtraEntry);
 		this->readDate(dataEntry, numExtraEntry);
+		this->readState(dataEntry, numExtraEntry);
 	}
 
 	char* buff = new char[512];
@@ -351,8 +365,10 @@ void Folder32::get_directory(int step){
 }
 
 void Folder32::print_info() {
+	if(this->isDeleted) {
+		cout << "xxx FOLDER IS DELETED xxx" << endl;
+	}
 	cout << this->root + "/" + this->name + "/ - ";
-
 	Entry32::print_info();
 }
 
