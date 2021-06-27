@@ -25,7 +25,7 @@ bool get_logical_disks(string& disks){
 		return false;
 }
 
-bool ReadSector(const char *disk, char*& buff, unsigned int sector) {
+bool ReadSector(const char *disk, char*& buff, unsigned long long sector) {
 	DWORD dwRead;   
 	HANDLE hDisk = CreateFile(disk,GENERIC_READ,FILE_SHARE_VALID_FLAGS,0,OPEN_EXISTING,0,0);
 	if(hDisk == INVALID_HANDLE_VALUE){
@@ -76,6 +76,7 @@ unsigned long long little_edian_char(char* data, int start, int nbyte){
 class EntryNTFS {
 	protected:
 		string name;
+		vector<unsigned long long> clusters;
 	public:
 		EntryNTFS() {}
 		void print_info() {}
@@ -104,10 +105,11 @@ class NTFS {
 	private:
 		const char* disk = NULL;
 		unsigned long long first_cluster = 0;
-		unsigned long long Sc = 0;	// sector per cluster - unit: 
-		unsigned long long Sb = 0;	// size of boost sector
-		long long Sv = 0;			// size of volume
-		long long mft_cluster = 0;
+		int Sc = 0;	// sector per cluster - unit: sector
+		unsigned long long Sv = 0;			// size of volume - sector
+		unsigned long long mft_cluster = 0; // cluster bat dau
+		int size_mft_entry = 0;	//size of MFT entry - byte
+
 		FolderNTFS* root;
 
 	public:
@@ -115,15 +117,96 @@ class NTFS {
 			this->disk = disk;
 		}
 
-		void read_pbs(char* buff) {
-			print_sector(buff);
-			default_sector_size = little_edian_char(buff, 11, 2);
-			cout << '\n' << "default_sector_size: "<< default_sector_size << endl;
+		bool read_pbs(char* buff) {
+			if((unsigned char)buff[510] == 0x55 && (unsigned char)buff[511] == 0xaa){
+				print_sector(buff);
+				default_sector_size = little_edian_char(buff, 11, 2);
+				Sc = buff[13];
+				mft_cluster = little_edian_char(buff, 48, 8);
+				//cout << mft_cluster;
+				size_mft_entry = little_edian_char(buff, 64, 1);
+				Sv = little_edian_char(buff, 40, 8);
+				return true;
+			}else{
+				return false;
+			}
+		}
+
+		unsigned long long find_sector_attribute(string data)
+		{
+			unsigned long long i = 512;
+			char* buff = new char[512];
+			while (true)
+			{
+				bool check = 0;
+				ReadSector(disk, buff, 2*Sc + i);
+
+				for (int j=0; j<512; j++){
+					if(buff[j] == data[0]){
+						for(int z=0; z<data.length(); z++){
+							if(buff[j+z] != data[z]){
+								check = 0;
+								break;
+							}else{
+								check = 1;
+							}
+						}
+						if(check == 1) return 2*Sc + i;
+					}
+				}
+				i += 512;
+
+				if(2*Sc + i > Sv) return 0;
+			}
 			
 		}
 
 		void read_mft() {
+			char* buff = new char[512];
 			
+			ReadSector(disk, buff,2*Sc);
+			print_sector(buff);
+			
+			unsigned long long  offset_to_start;
+			offset_to_start = little_edian_char(buff, 20, 2);
+			int size_10 = buff[offset_to_start + 4];
+
+			int offset_30 = offset_to_start + size_10;
+			int size_30 = buff[offset_30 + 4];
+
+			int offset_80 = offset_to_start + size_10 + size_30;
+			int size_80 = buff[offset_80 + 4];
+
+			unsigned long long start_runlist = offset_80 + 64;
+			unsigned long long check_runlist = buff[start_runlist];
+
+			char* p;
+			while(check_runlist != 0){
+				stringstream ss1, ss2;
+				ss1 << ((buff[start_runlist] & 0xF0) >> 4);
+				ss2 << ((buff[start_runlist] & 0x0F) >> 0);
+
+				//cout << "1: " << ((buff[start_runlist] & 0xF0) >> 4) << endl;
+				//cout << "2: " << ((buff[start_runlist] & 0x0F) >> 0) << endl;
+				//cout << check_runlist << endl;
+
+				
+
+				start_runlist += 1 + strtol(ss1.str().c_str(), &p, 16) + strtol(ss2.str().c_str(), &p, 16);
+				check_runlist = buff[start_runlist];
+				cout << check_runlist << endl;
+			}
+			
+			//unsigned long long size_content = little_edian_char(buff, offset_80+size_80, 8);
+			//cout << "size: " << size_content << endl; 
+
+			// for every record(entry - 2sector)
+				// header
+					// 
+				// standard attribute
+				// file name - attribute
+				// data - attribute
+
 		}
 };
 
@@ -160,6 +243,7 @@ int main(){
 			if (ReadSector(disk.c_str(), buff, 0)){
 				NTFS ntfs(disk.c_str());
 				ntfs.read_pbs(buff);
+				ntfs.read_mft();
 			}
 			else {
 				cout << "Error while reading\n";

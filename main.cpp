@@ -42,11 +42,13 @@ int main(){
 
 				//if (Filesystem.compare("FAT32") == 0){
 				FAT32 fat(disk.c_str());
+				char* buff = new char[512];
 				if(fat.read_bootsector(buff)){
 					fat.get_bs_info();
 					fat.read_rdet();
 					fat.get_rdet_info();
 					fat.print_tree();
+					ReadSector(disk.c_str(), buff, 5000000);
 				}
 				//}
 			}

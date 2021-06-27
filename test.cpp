@@ -3,10 +3,9 @@ using namespace std;
 
 int main()
 {
-    int number = 11223344;
-    int hex = 0x200;
-
-    cout << hex;
+    string str = "kha";
+    //cout << str[1];
+    cout << str.length();
 
     return 0;
 }
