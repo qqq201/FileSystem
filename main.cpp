@@ -47,6 +47,9 @@ int main(){
 					fat.read_rdet();
 					fat.get_rdet_info();
 					fat.print_tree();
+					char* buf = new char[512];
+					ReadSector(disk.c_str(), buf, 0);
+					print_sector(buf);
 				}
 				//}
 			}
