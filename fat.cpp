@@ -61,7 +61,7 @@ bool get_logical_disks(string& disks){
 
 bool ReadSector(const char *disk, char*& buff, DWORD sector) {
 	DWORD dwRead;
-	HANDLE hDisk = CreateFile(disk,GENERIC_READ,FILE_SHARE_VALID_FLAGS,0,OPEN_EXISTING,0,0);
+	HANDLE hDisk = CreateFile(disk, GENERIC_READ, FILE_SHARE_VALID_FLAGS, 0, OPEN_EXISTING, 0, 0);
 	if(hDisk == INVALID_HANDLE_VALUE){
 		CloseHandle(hDisk);
 		return false;
@@ -159,7 +159,7 @@ void Entry32::readClusters(string dataEntry, int numExtraEntry) {
 		DWORD high = little_edian_string(dataEntry, 20 + numExtraEntry * 32, 2);
 		DWORD low = little_edian_string(dataEntry, 26 + numExtraEntry * 32, 2);
 
-		if (this->isDeleted)
+		//if (!this->isDeleted)
 			this->clusters = FAT32::read_fat(high * 65536 + low);
 	}
 }
@@ -239,6 +239,12 @@ void File32::readEntry(string dataEntry, int numExtraEntry) {
 	this->readState(dataEntry, numExtraEntry);
 	this->readClusters(dataEntry, numExtraEntry);
 	this->readDate(dataEntry, numExtraEntry);
+
+	cout << this->name << " ";
+	for (int cluster : clusters)
+		cout << cluster << " ";
+
+	cout << endl;
 }
 
 Entry32* File32::get_entry(int id){
@@ -361,6 +367,11 @@ void Folder32::readEntry(string dataEntry, int numExtraEntry) {
 				hasNextSector = false;
 		}
 	}
+
+	cout << this->name << " ";
+	for (int cluster : clusters)
+		cout << cluster << " ";
+	cout << endl;
 }
 
 bool Folder32::type(){
@@ -474,27 +485,29 @@ string FAT32::get_cd_path(){
 	return this->current_directory->get_path();
 }
 
-vector<DWORD> FAT32::read_fat(DWORD clus){
+vector<DWORD> FAT32::read_fat(DWORD cluster){
 	DWORD sectorSize = default_sector_size / 4;
 	DWORD maxCluster = sectorSize * Sf;
-	if (clus < maxCluster){
-		DWORD cluster = clus;
+	cout << cluster << ": ";
 
+	if (cluster < maxCluster && cluster > 0){
 		vector<DWORD> clusters;
 
 		DWORD sector = 0;
-		char* buff = NULL;
+		char* buff = new char[512];
 
 		do {
 			clusters.push_back(cluster);
-			buff = new char[512];
-			if(sector != cluster / sectorSize) {
+			if(sector != cluster / sectorSize + Sb) {
+				delete[] buff;
+				buff = new char[512];
 				sector = cluster / sectorSize + Sb;
 				ReadSector(disk, buff, sector);
 			}
 
 			cluster = little_edian_char(buff, (cluster % sectorSize) * 4, 4);
-		} while(cluster != 268435447 && cluster != 268435455 && cluster < maxCluster); //OFFFFFF7 & 0FFFFFFF & max cluster
+		} while(cluster != 268435447 && cluster != 268435455 && cluster < maxCluster && cluster > 0); //OFFFFFF7 & 0FFFFFFF & max cluster
+		cout << endl;
 		return clusters;
 	}
 	else {
