@@ -4,8 +4,13 @@
 #include <sstream>
 #include <iomanip>
 #include <iostream>
+#include <string>
 #include <vector>
+#include<math.h>
+#include <algorithm>
 using namespace std;
+
+signed long long TwoElement(unsigned long long num);
 
 char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 WORD default_sector_size = 512;
@@ -76,7 +81,7 @@ unsigned long long little_edian_char(char* data, int start, int nbyte){
 class EntryNTFS {
 	protected:
 		string name;
-		vector<unsigned long long> clusters;
+		vector< pair<unsigned long long, unsigned long long> > clusters;
 	public:
 		EntryNTFS() {}
 		void print_info() {}
@@ -154,16 +159,16 @@ class NTFS {
 						if(check == 1) return 2*Sc + i;
 					}
 				}
-				i += 512;
+				i += 1;
 
-				if(2*Sc + i > Sv) return 0;
+				if(2*Sc + i > (Sv / 512)) return 0;
 			}
 			
 		}
 
 		void read_mft() {
 			char* buff = new char[512];
-			
+
 			ReadSector(disk, buff,2*Sc);
 			print_sector(buff);
 			
@@ -177,8 +182,12 @@ class NTFS {
 			int offset_80 = offset_to_start + size_10 + size_30;
 			int size_80 = buff[offset_80 + 4];
 
-			unsigned long long start_runlist = offset_80 + 64;
+			unsigned long long start_runlist = offset_80 + little_edian_char(buff, offset_80 + 32, 1);
 			unsigned long long check_runlist = buff[start_runlist];
+
+			vector< pair<unsigned long long, unsigned long long> > clusters;	// cluster bat dau - size
+			unsigned long long size_fragment;
+			signed long long location_fragment = 0; //clusters
 
 			char* p;
 			while(check_runlist != 0){
@@ -190,25 +199,100 @@ class NTFS {
 				//cout << "2: " << ((buff[start_runlist] & 0x0F) >> 0) << endl;
 				//cout << check_runlist << endl;
 
-				
+				unsigned long long s1 = strtol(ss1.str().c_str(), &p, 16);
+				unsigned long long s2 = strtol(ss2.str().c_str(), &p, 16);
 
-				start_runlist += 1 + strtol(ss1.str().c_str(), &p, 16) + strtol(ss2.str().c_str(), &p, 16);
+				size_fragment = little_edian_char(buff, start_runlist + 1, s2);
+				size_fragment *= 4096; // clusters to bytes
+				//cout << "s: " << size_fragment << endl;
+				//location_fragment = location_fragment + little_edian_char(buff, start_runlist + 1 + s2, s1);
+				//location âm => chuyển về dec > 2^(n-1) => số âm => bù 2 để chuyển về số âm
+				unsigned long long dec_compare = little_edian_char(buff, start_runlist + 1 + s2, s1);
+				if ( dec_compare > pow(2,s1*8-1)){
+					location_fragment = TwoElement(dec_compare);
+
+				}else{
+					location_fragment = dec_compare;
+				}
+				//cout << "l: " << location_fragment << endl;
+
+				clusters.push_back(make_pair(location_fragment, size_fragment));
+
+				start_runlist += 1 + s1 + s2;
 				check_runlist = buff[start_runlist];
 				cout << check_runlist << endl;
 			}
+
+			for (int i=1; i<clusters.size(); i++){
+				clusters[i].first += clusters[i-1].first;	//clusters
+			}
 			
-			//unsigned long long size_content = little_edian_char(buff, offset_80+size_80, 8);
-			//cout << "size: " << size_content << endl; 
-
-			// for every record(entry - 2sector)
-				// header
-					// 
-				// standard attribute
-				// file name - attribute
-				// data - attribute
-
 		}
 };
+
+signed long long TwoElement(unsigned long long num){
+
+    // Find binary vector for number
+    vector<int> bit_vector;
+
+    while (num >  0)
+    {
+        bit_vector.push_back(num%2);
+        num = num/2;
+    }reverse(bit_vector.begin(), bit_vector.end());
+
+    // substract -1 from binary
+    bool borrow_bit = 0;
+    if (bit_vector.back() == 0){
+        borrow_bit =1;
+        bit_vector.back() = 1;
+    }else{
+        bit_vector.back() = 0;
+    }
+
+    int i = bit_vector.size() - 2;
+
+    while (borrow_bit != 0)
+    {
+        if(bit_vector[i] == 0){
+            borrow_bit =1;
+            bit_vector[i] = 1;
+            i = i-1;
+        }else{
+            borrow_bit = 0;
+            bit_vector[i] = 0;
+        }
+    }
+
+    cout << endl;
+    for(int j : bit_vector){
+        cout << j;
+    }
+    cout << endl;
+
+    // XOR
+    vector<int> vt;
+    for(int j = 0; j<bit_vector.size(); j++){
+        if(bit_vector[j] == 1) vt.push_back(0);
+        else vt.push_back(1);
+    }
+
+    //cout << "size: " << vt.size() << endl;
+    for(int k : vt){
+        cout << k;
+    }
+    cout << endl;
+
+    signed long long result = 0;
+    int m = 0;
+    for(int i=vt.size()-1; i>=0; i--){
+        result += vt[i] * pow(2, m);
+        m++;
+    }
+
+    return -1*result;
+    
+}
 
 int main(){
 	//set tile
