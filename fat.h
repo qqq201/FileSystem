@@ -8,8 +8,8 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
-#include <iomanip>
 #include <cstdlib>
+#include <iomanip>
 using namespace std;
 
 struct Date {
@@ -24,16 +24,17 @@ struct Date {
 class Entry32 {
 	protected:
 		vector<DWORD> clusters;
+
+	public:
 		vector<bool> status;
 		string name;
+		string ext;
 		string root;
 		bool isRoot = false;
 		bool isDeleted;
 		Date created;
 		Date modified;
 		unsigned long long size = 0;
-
-	public:
 		Entry32* parent = NULL;
 
 		Entry32(string rootName, Entry32* parent);
@@ -48,6 +49,10 @@ class Entry32 {
 
 		void readDate(string dataEntry, int numExtraEntry);
 
+		string get_modified_date();
+
+		string get_size();
+
 		virtual string get_path() = 0;
 
 		virtual vector<Entry32*> get_directory() = 0;
@@ -58,14 +63,10 @@ class Entry32 {
 
 		virtual void readEntry(string dataEntry, int numExtraEntry) = 0;
 
-		virtual string get_info() = 0;
-
 		virtual bool type() = 0; //file: false, folder: true
 };
 
 class File32 : public Entry32{
-	private:
-		string ext = "";
 	public:
 		File32(string rootName, Entry32* parent);
 
@@ -79,8 +80,6 @@ class File32 : public Entry32{
 
 		virtual void readEntry(string dataEntry, int numExtraEntry);
 
-		virtual string get_info();
-
 		virtual string get_path();
 
 		virtual bool type();
@@ -89,9 +88,9 @@ class File32 : public Entry32{
 };
 
 class Folder32 : public Entry32 {
-	private:
-		vector<Entry32*> entries;
 	public:
+		vector<Entry32*> entries;
+
 		Folder32(string rootName, Entry32* parent);
 
 		void set_as_root(vector<DWORD>& clusters);
@@ -101,8 +100,6 @@ class Folder32 : public Entry32 {
 		virtual string get_content();
 
 		virtual void readEntry(string dataEntry, int numExtraEntry);
-
-		virtual string get_info();
 
 		virtual string get_path();
 

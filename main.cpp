@@ -31,25 +31,9 @@ int main(){
 			//read first sector and determine which filesystem
 			char* buff = new char[512];
 			if (ReadSector(disk.c_str(), buff, 0)){
-				//string Filesystem;
-				//for (int i = 82; i < 90; ++i){
-				//	if (buff[i] == ' ')
-						//break;
-					//Filesystem += buff[i];
-				//}
-
-				//cout << "File system: "<< Filesystem << endl;
-
-				//if (Filesystem.compare("FAT32") == 0){
 				FAT32 fat(disk.c_str());
 				if(fat.read_bootsector(buff)){
-					fat.get_bs_info();
 					fat.read_rdet();
-					fat.get_rdet_info();
-					fat.print_tree();
-					char* buf = new char[512];
-					ReadSector(disk.c_str(), buf, 0);
-					print_sector(buf);
 				}
 				//}
 			}

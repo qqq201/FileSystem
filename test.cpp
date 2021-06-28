@@ -10,7 +10,16 @@ string current_disk = "\\\\.\\?:";
 HWND main_hwnd, fs_hwnd, directory_hwnd, menu_hwnd;
 HINSTANCE ghInstance;
 
+string file_content;
+vector<Entry32*> entries;
+
+RECT path_rect = {230, 15, 720, 40};
+
+bool drawn = false;
+
 FAT32* fat = NULL;
+
+int nline = 0;
 
 void filesystem_handle(){
   fat = new FAT32(current_disk.c_str());
@@ -42,15 +51,27 @@ void load_directory(HWND hwnd);
 
 void main_to_fs(HWND hwnd);
 
+HWND CreateAHorizontalScrollBar(HWND hwndParent, int sbHeight);
+
 void draw_button(LPDRAWITEMSTRUCT Item, wchar_t* file, UINT text_align);
 
 void draw_entry_button(LPDRAWITEMSTRUCT Item, Entry32* entry);
 
 void print_fs_info(HDC hdc);
 
-void draw_title_bar(HDC hdc);
+void draw_title_bar(HDC hdc, int pos);
 
-void print_file(HDC hdc);
+void load_file(Entry32* entry) {
+  file_content = entry->get_content();
+}
+
+void print_file(HDC hdc, int pos);
+
+void SD_OnVScroll(HWND hwnd, UINT code);
+
+void SD_ScrollClient(HWND hwnd, int bar, int pos);
+
+int SD_GetScrollPos(HWND hwnd, int bar, UINT code);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInst, LPSTR args, int nCmdShow){
   Gdiplus::GdiplusStartupInput gpStartupInput;
@@ -115,6 +136,7 @@ LRESULT CALLBACK menu_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
         current_disk[4] = disks[id];
         main_to_fs(hwnd);
       }
+      load_directory(directory_hwnd);
       break;
     }
     case WM_CREATE:{
@@ -129,8 +151,6 @@ LRESULT CALLBACK menu_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
 
   return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
-
-RECT path_rect = {230, 15, 720, 40};
 
 LRESULT CALLBACK fs_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
   switch(msg) {
@@ -172,13 +192,14 @@ LRESULT CALLBACK fs_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
           break;
         }
         case BACKBUTTON2: {
-          fat->get_current_directory();
-          Entry32* cd = fat->back_parent_directory();
-          read_folder = cd->type();
+          fat->back_parent_directory();
+          read_folder = true;
+          drawn = false;
           InvalidateRect(directory_hwnd, NULL, TRUE);
           RedrawWindow(directory_hwnd, NULL, NULL, RDW_INTERNALPAINT);
           InvalidateRect(fs_hwnd, &path_rect, TRUE);
           RedrawWindow(fs_hwnd, &path_rect, NULL, RDW_INTERNALPAINT);
+          load_directory(directory_hwnd);
           break;
         }
       }
@@ -200,23 +221,119 @@ BOOL CALLBACK DestoryChildCallback(HWND hwnd, LPARAM lParam){
   return TRUE;
 }
 
+void SD_OnVScroll(HWND hwnd, UINT code) {
+    const int scrollPos = SD_GetScrollPos(hwnd, SB_VERT, code);
+
+    if(scrollPos == -1)
+        return;
+
+    SetScrollPos(hwnd, SB_VERT, scrollPos, TRUE);
+    SD_ScrollClient(hwnd, SB_VERT, scrollPos);
+}
+
+void SD_ScrollClient(HWND hwnd, int bar, int pos) {
+    static int s_prevx = 1;
+    static int s_prevy = 1;
+
+    int cx = 0;
+    int cy = 0;
+
+    int& delta = cy;
+    int& prev = s_prevy;
+
+    delta = prev - pos;
+    prev = pos;
+
+    if(cx || cy) {
+      ScrollWindow(hwnd, cx, cy, NULL, NULL);
+    }
+}
+
+int SD_GetScrollPos(HWND hwnd, int bar, UINT code) {
+    SCROLLINFO si = {};
+    si.cbSize = sizeof(SCROLLINFO);
+    si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE | SIF_TRACKPOS;
+    GetScrollInfo(hwnd, bar, &si);
+
+    const int minPos = si.nMin;
+    const int maxPos = si.nMax - (si.nPage - 1);
+
+    int result = -1;
+
+    switch(code) {
+    case SB_LINEUP:
+        result = max(si.nPos - 1, minPos);
+        break;
+
+    case SB_LINEDOWN:
+        result = min(si.nPos + 1, maxPos);
+        break;
+
+    case SB_PAGEUP:
+        result = max(si.nPos - (int)si.nPage, minPos);
+        break;
+
+    case SB_PAGEDOWN:
+        result = min(si.nPos + (int)si.nPage, maxPos);
+        break;
+
+    case SB_THUMBTRACK:
+        result = si.nTrackPos;
+        break;
+
+    case SB_TOP:
+        result = minPos;
+        break;
+
+    case SB_BOTTOM:
+        result = maxPos;
+        break;
+    }
+
+    return result;
+}
+
+int max(int a, int b){
+  return (a > b)? a : b;
+}
+
 LRESULT CALLBACK directory_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
   SCROLLINFO si;
 
   switch(msg) {
+    case WM_VSCROLL:{
+      SD_OnVScroll(hwnd, LOWORD(wParam));
+      break;
+    }
+    case WM_CREATE:{
+      SetScrollRange(hwnd, SB_VERT, 0, 700, true);
+      break;
+    }
     case WM_PAINT: {
+      SCROLLINFO si = {};
+      si.cbSize = sizeof(SCROLLINFO);
+      si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE | SIF_TRACKPOS;
+      GetScrollInfo(hwnd, SB_VERT, &si);
+      int pos = si.nTrackPos;
+
+      //if (read_folder){
       PAINTSTRUCT ps;
       HDC hdc = BeginPaint(hwnd, &ps);
-
-      if (read_folder){
-        load_directory(directory_hwnd);
-        draw_title_bar(hdc);
+      if (!drawn){
+        drawn = true;
+        if(read_folder)
+          draw_title_bar(hdc, pos);
+        else{
+          print_file(hdc, pos);
+          SetScrollRange(hwnd, SB_VERT, 0, max(nline * 20, 1), true);
+        }
       }
-      else{
-        //print_file(hdc);
-        HWND hwndEdit = CreateWindowW(L"Edit", L"test\ntohaohteoha", WS_CHILD | ES_MULTILINE | ES_WANTRETURN | WS_VISIBLE | WS_VSCROLL | ES_AUTOVSCROLL, 50, 50, 150, 20, hwnd, NULL, NULL, NULL);
+      else if (!read_folder){
+        print_file(hdc, pos);
       }
-
+      else {
+        draw_title_bar(hdc, pos);
+      }
       EndPaint(hwnd, &ps);
       ReleaseDC(hwnd, hdc);
       break;
@@ -228,43 +345,24 @@ LRESULT CALLBACK directory_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         draw_entry_button(Item, current_directory->get_entry(Item->CtlID));
       break;
     }
-    case WM_CREATE: {
-      break;
-    }
     case WM_COMMAND: {
+      drawn = false;
       int id = LOWORD(wParam);
       Entry32* cd = fat->change_directory(id);
       read_folder = cd->type();
+
       EnumChildWindows(hwnd, DestoryChildCallback, 0);
       InvalidateRect(hwnd, NULL, TRUE);
       RedrawWindow(hwnd, NULL, NULL, RDW_INTERNALPAINT);
       InvalidateRect(fs_hwnd, &path_rect, TRUE);
       RedrawWindow(fs_hwnd, &path_rect, NULL, RDW_INTERNALPAINT);
-      break;
-    }
-    case WM_DESTROY:{
-      PostQuitMessage(0);
-      break;
-    }
-  }
 
-  return DefWindowProcW(hwnd, msg, wParam, lParam);
-}
-
-LRESULT CALLBACK file_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
-  switch(msg) {
-    case WM_PAINT: {
-      //draw info
-      PAINTSTRUCT ps;
-      HDC hdc = BeginPaint(hwnd, &ps);
-      RECT rec = {};
-      SetRect(&rec, 5, 5, 200, 500);
-
-      string info = fat->get_current_directory()->get_content();
-      DrawText(hdc, &info[0], info.length(), &rec, DT_TOP|DT_LEFT);
-
-      EndPaint(hwnd, &ps);
-      ReleaseDC(hwnd, hdc);
+      if (!read_folder)
+        load_file(cd);
+      else{
+        drawn = false;
+        load_directory(hwnd);
+      }
       break;
     }
     case WM_DESTROY:{
@@ -348,14 +446,15 @@ void load_directory_window(HWND hwnd){
   wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
 
   RegisterClassW(&wc);
-  directory_hwnd = CreateWindowW(wc.lpszClassName, NULL, WS_VISIBLE | WS_CHILD | WS_BORDER, 220, 50, 720, 670, hwnd, NULL, ghInstance, NULL);
+  directory_hwnd = CreateWindowW(wc.lpszClassName, NULL, WS_VISIBLE | WS_CHILD | WS_BORDER | WS_VSCROLL, 220, 50, 720, 630, hwnd, NULL, ghInstance, NULL);
 }
 
 void load_directory(HWND hwnd){
   Entry32* current_directory = fat->get_current_directory();
   vector<Entry32*> content = current_directory->get_directory();
 
-  int button_height = 20, button_width = 740, i = 0;
+  int button_width = 700, button_height = 25, i = 0;
+
   for (Entry32* entry : content){
     CreateWindowA("Button", "", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 5, 40 + i * (button_height + 15), button_width, button_height, hwnd, (HMENU) i, NULL, NULL);
     ++i;
@@ -396,11 +495,12 @@ void draw_entry_button(LPDRAWITEMSTRUCT Item, Entry32* entry){
   SelectObject(Item->hDC, CreateSolidBrush(0xFFFFFF));
   SetBkMode(Item->hDC, TRANSPARENT);
 
+
   Gdiplus::Graphics graphics(Item->hDC);
   RECT name_rect = {30, 0, 300, 20};
   RECT date_rect = {310, 0, 450, 20};
-  RECT type_rect = {460, 0, 600, 20};
-  RECT size_rect = {600, 0, 700, 20};
+  RECT type_rect = {460, 0, 580, 20};
+  RECT size_rect = {590, 0, 680, 20};
 
   if (entry->type()){
     Gdiplus::Image file_icon(L"assets/folder-icon.png");
@@ -444,33 +544,39 @@ void print_fs_info(HDC hdc){
   DrawTextA(hdc, path.c_str(), path.length(), &path_rect, DT_LEFT);
 }
 
-void print_file(HDC hdc){
+void print_file(HDC hdc, int pos){
   Entry32* current_directory = fat->get_current_directory();
   Gdiplus::Graphics graphics(hdc);
   Gdiplus::SolidBrush brush(Gdiplus::Color(255, 0, 0, 0));
-  Gdiplus::FontFamily fontFamily(L"Arial");
-  Gdiplus::Font font(&fontFamily, 14, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-  Gdiplus::PointF point1(5, 5);
+  Gdiplus::FontFamily fontFamily(L"Consolas");
+  Gdiplus::Font font(&fontFamily, 11, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint);
+  Gdiplus::PointF point1(5, 5 - pos);
 
-  string content = current_directory->get_content();
   wstringstream wss;
-  wss << content.c_str();
+  int len = file_content.length();
+  int i;
+  for (i = 0; i < len; i += 82){
+    wss << file_content.substr(i, 82).c_str() << "\n";
+  }
+
+  nline = i / 82;
   graphics.DrawString(wss.str().c_str(), -1, &font, point1, &brush);
+  //TextOutA(hdc, 5, 5, content.c_str(), content.length());
 }
 
-void draw_title_bar(HDC hdc) {
+void draw_title_bar(HDC hdc, int pos) {
   Gdiplus::Graphics graphics(hdc);
   Gdiplus::Pen pen(Gdiplus::Color(255, 57, 57, 57));
-  graphics.DrawLine(&pen, 300, 0, 300, 25);
-  graphics.DrawLine(&pen, 450, 0, 450, 25);
-  graphics.DrawLine(&pen, 600, 0, 600, 25);
+  graphics.DrawLine(&pen, 300, -pos, 300, 25-pos);
+  graphics.DrawLine(&pen, 450, -pos, 450, 25-pos);
+  graphics.DrawLine(&pen, 580, -pos, 580, 25-pos);
   Gdiplus::SolidBrush brush(Gdiplus::Color(255, 0, 0, 0));
   Gdiplus::FontFamily fontFamily(L"Arial");
   Gdiplus::Font font(&fontFamily, 14, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-  Gdiplus::PointF point1(15, 5);
-  Gdiplus::PointF point2(315, 5);
-  Gdiplus::PointF point3(465, 5);
-  Gdiplus::PointF point4(615, 5);
+  Gdiplus::PointF point1(15, 5-pos);
+  Gdiplus::PointF point2(315, 5-pos);
+  Gdiplus::PointF point3(465, 5-pos);
+  Gdiplus::PointF point4(615, 5-pos);
 
   graphics.DrawString(L"Name", -1, &font, point1, &brush);
   graphics.DrawString(L"Date modified", -1, &font, point2, &brush);

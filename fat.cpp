@@ -160,7 +160,7 @@ void Entry32::readClusters(string dataEntry, int numExtraEntry) {
 		DWORD low = little_edian_string(dataEntry, 26 + numExtraEntry * 32, 2);
 
 		//if (!this->isDeleted)
-			this->clusters = FAT32::read_fat(high * 65536 + low);
+		this->clusters = FAT32::read_fat(high * 65536 + low);
 	}
 }
 
@@ -203,6 +203,29 @@ void Entry32::readDate(string dataEntry, int numExtraEntry) {
 	this->modified.minute = (modifiedTime >> 5) & 0x3F;
 }
 
+string Entry32::get_modified_date(){
+	stringstream ss;
+	ss << this->modified.day << "/" << this->modified.month << "/" << this->modified.year << " " << this->modified.hour << ":";
+	if (this->modified.minute < 10)
+		ss << "0" << this->modified.minute;
+	else
+		ss << this->modified.minute;
+	return ss.str();
+}
+
+string Entry32::get_size(){
+	if (this->type())
+		return "";
+	else if (this->size > 0){
+		stringstream ss;
+		ss << this->size / 1024.0 << " KB";
+		return ss.str();
+	}
+	else {
+		return "0 KB";
+	}
+}
+
 string add_space_right(string str, int len){
 	for (int i = len - str.length(); i > 0; --i)
 		str += ' ';
@@ -226,7 +249,7 @@ void File32::readExt(string dataEntry, int numExtraEntry) {
 }
 
 void File32::readSize(string dataEntry) {
-	if (dataEntry.length() > 31){
+	if (dataEntry.length() > 31 && this->clusters.size() > 0 && isDeleted){
 		this->size = little_edian_string(dataEntry, 28, 4);
 	}
 }
@@ -235,16 +258,10 @@ void File32::readEntry(string dataEntry, int numExtraEntry) {
 	this->readName(dataEntry, numExtraEntry);
 	this->readExt(dataEntry, numExtraEntry);
 	this->readStatus(dataEntry, numExtraEntry);
-	this->readSize(dataEntry);
 	this->readState(dataEntry, numExtraEntry);
 	this->readClusters(dataEntry, numExtraEntry);
+	this->readSize(dataEntry);
 	this->readDate(dataEntry, numExtraEntry);
-
-	cout << this->name << " ";
-	for (int cluster : clusters)
-		cout << cluster << " ";
-
-	cout << endl;
 }
 
 Entry32* File32::get_entry(int id){
@@ -257,27 +274,6 @@ string File32::get_path(){
 
 vector<Entry32*> File32::get_directory(){
 	return {};
-}
-
-string File32::get_info() {
-	string info, date;
-	info = add_space_right(this->name + "." + this->ext, 60);
-
-	stringstream ss;
-	ss << this->modified.day << "/" << this->modified.month << "/" << this->modified.year << " " << this->modified.hour << ":" << this->modified.minute;
-	date = add_space_right(ss.str(), 30);
-
-	info += date;
-	info += add_space_right(this->ext, 30);
-
-	ss.clear();
-
-	if (this->size > 0){
-		ss << this->size << " KB";
-		info += add_space_left(ss.str(), 20);
-	}
-
-	return info;
 }
 
 string File32::get_content() {
@@ -367,11 +363,6 @@ void Folder32::readEntry(string dataEntry, int numExtraEntry) {
 				hasNextSector = false;
 		}
 	}
-
-	cout << this->name << " ";
-	for (int cluster : clusters)
-		cout << cluster << " ";
-	cout << endl;
 }
 
 bool Folder32::type(){
@@ -397,24 +388,11 @@ string Folder32::get_content() {
 	return "";
 }
 
-string Folder32::get_info() {
-	string info, date;
-	info = add_space_right(this->name, 60);
-
-	stringstream ss;
-	ss << this->modified.day << "/" << this->modified.month << "/" << this->modified.year << " " << this->modified.hour << ":" << this->modified.minute;
-	date = add_space_right(ss.str(), 30);
-
-	info += date;
-	info += add_space_right("File folder", 30);
-	return info;
-}
-
 FAT32::FAT32(const char* disk) { this->disk = disk; }
 
 FAT32::~FAT32() {
-	delete root;
-	root = NULL;
+	//delete root;
+	//root = NULL;
 }
 
 DWORD FAT32::cluster_to_sector(DWORD cluster){
@@ -458,10 +436,6 @@ void FAT32::read_rdet() {
 	root->set_as_root(rdet_clusters);
 	root->readEntry("", 0);
 	current_directory = root;
-
-	char* buff = new char[512];
-	ReadSector(disk, buff, Sb);
-	print_sector(buff);
 }
 
 Entry32* FAT32::back_parent_directory(){
@@ -488,7 +462,6 @@ string FAT32::get_cd_path(){
 vector<DWORD> FAT32::read_fat(DWORD cluster){
 	DWORD sectorSize = default_sector_size / 4;
 	DWORD maxCluster = sectorSize * Sf;
-	cout << cluster << ": ";
 
 	if (cluster < maxCluster && cluster > 0){
 		vector<DWORD> clusters;
@@ -507,7 +480,6 @@ vector<DWORD> FAT32::read_fat(DWORD cluster){
 
 			cluster = little_edian_char(buff, (cluster % sectorSize) * 4, 4);
 		} while(cluster != 268435447 && cluster != 268435455 && cluster < maxCluster && cluster > 0); //OFFFFFF7 & 0FFFFFFF & max cluster
-		cout << endl;
 		return clusters;
 	}
 	else {
