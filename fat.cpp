@@ -138,6 +138,10 @@ Entry32::Entry32(string rootName, Entry32* parent) {
 	this->parent = parent;
 }
 
+Entry32::~Entry32(){
+	parent = NULL;
+}
+
 void Entry32::readStatus(string dataEntry, int numExtraEntry) {
 	if (dataEntry.length() > 31){
 		for(int i = 0; i < 6; ++i)
@@ -213,35 +217,38 @@ string Entry32::get_modified_date(){
 	return ss.str();
 }
 
+float round(float var){
+	int value = (int)(var * 100);
+  return (float)value / 100;
+}
+
 string Entry32::get_size(){
 	if (this->type())
 		return "";
 	else if (this->size > 0){
+		vector<string> unit = {" Bytes", " KB", " MB", " GB"};
+		float temp = this->size;
 		stringstream ss;
-		ss << this->size / 1024.0 << " KB";
+
+		for (int i = 0; i < 4; ++i){
+			if (to_string(int(temp)).length() < 5){
+				ss << round(temp) << unit[i];
+				return ss.str();
+			}
+			temp /= 1024.0;
+		}
+
+		ss << round(temp) << " TB";
 		return ss.str();
 	}
 	else {
-		return "0 KB";
+		return "0 Bytes";
 	}
-}
-
-string add_space_right(string str, int len){
-	for (int i = len - str.length(); i > 0; --i)
-		str += ' ';
-	return str;
-}
-
-string add_space_left(string str, int len){
-	if (len > str.length()){
-		string new_str(len - str.length(), ' ');
-		return new_str + str;
-	}
-	else
-		return "";
 }
 
 File32::File32(string rootName, Entry32* parent) : Entry32(rootName, parent) {}
+
+File32::~File32(){}
 
 void File32::readExt(string dataEntry, int numExtraEntry) {
 	if (dataEntry.length() > 31)
@@ -249,7 +256,7 @@ void File32::readExt(string dataEntry, int numExtraEntry) {
 }
 
 void File32::readSize(string dataEntry) {
-	if (dataEntry.length() > 31 && this->clusters.size() > 0 && isDeleted){
+	if (dataEntry.length() > 31 && this->clusters.size() > 0){
 		this->size = little_edian_string(dataEntry, 28, 4);
 	}
 }
@@ -264,6 +271,8 @@ void File32::readEntry(string dataEntry, int numExtraEntry) {
 	this->readDate(dataEntry, numExtraEntry);
 }
 
+void File32::clear(){}
+
 Entry32* File32::get_entry(int id){
 	return NULL;
 }
@@ -277,19 +286,24 @@ vector<Entry32*> File32::get_directory(){
 }
 
 string File32::get_content() {
-	stringstream ss;
-	for (long long cluster : this->clusters){
-		int sector = FAT32::cluster_to_sector(cluster);
-		for (int s = sector; s < sector + FAT32::Sc; ++s){
-			char* buff = new char[512];
-			if (ReadSector(FAT32::disk, buff, s)){
-				for (int c = 0; c < 512; ++c)
-					if (buff[c] != 0)
-						ss << buff[c];
+	if (this->ext.compare("TXT") == 0){
+		stringstream ss;
+		for (long long cluster : this->clusters){
+			int sector = FAT32::cluster_to_sector(cluster);
+			for (int s = sector; s < sector + FAT32::Sc; ++s){
+				char* buff = new char[512];
+				if (ReadSector(FAT32::disk, buff, s)){
+					for (int c = 0; c < 512; ++c)
+						if (buff[c] != 0)
+							ss << buff[c];
+				}
 			}
 		}
+		return ss.str();
 	}
-	return ss.str();
+	else {
+		return "-- SORRY, CURRENTLY WE CAN ONLY OPEN TEXT (TXT) FILES --";
+	}
 }
 
 bool File32::type(){
@@ -297,6 +311,10 @@ bool File32::type(){
 }
 
 Folder32::Folder32(string rootName, Entry32* parent) : Entry32(rootName, parent) {}
+
+Folder32::~Folder32(){
+	this->clear();
+}
 
 void Folder32::set_as_root(vector<DWORD>& clusters){
 	isRoot = true;
@@ -365,6 +383,18 @@ void Folder32::readEntry(string dataEntry, int numExtraEntry) {
 	}
 }
 
+void Folder32::clear(){
+	for (Entry32* entry : entries){
+		if (entry->type())
+			entry->clear();
+		else {
+			delete entry;
+			entry = NULL;
+		}
+	}
+	entries.clear();
+}
+
 bool Folder32::type(){
 	return true;
 }
@@ -391,8 +421,9 @@ string Folder32::get_content() {
 FAT32::FAT32(const char* disk) { this->disk = disk; }
 
 FAT32::~FAT32() {
-	//delete root;
-	//root = NULL;
+	root->clear();
+	delete root;
+	root = NULL;
 }
 
 DWORD FAT32::cluster_to_sector(DWORD cluster){

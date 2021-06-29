@@ -38,6 +38,7 @@ class Entry32 {
 		Entry32* parent = NULL;
 
 		Entry32(string rootName, Entry32* parent);
+		~Entry32();
 
 		void readStatus(string dataEntry, int numExtraEntry);
 
@@ -52,6 +53,8 @@ class Entry32 {
 		string get_modified_date();
 
 		string get_size();
+
+		virtual void clear() = 0;
 
 		virtual string get_path() = 0;
 
@@ -69,10 +72,13 @@ class Entry32 {
 class File32 : public Entry32{
 	public:
 		File32(string rootName, Entry32* parent);
+		~File32();
 
 		void readExt(string dataEntry, int numExtraEntry);
 
 		void readSize(string dataEntry);
+
+		virtual void clear();
 
 		virtual vector<Entry32*> get_directory();
 
@@ -92,8 +98,11 @@ class Folder32 : public Entry32 {
 		vector<Entry32*> entries;
 
 		Folder32(string rootName, Entry32* parent);
+		~Folder32();
 
 		void set_as_root(vector<DWORD>& clusters);
+
+		virtual void clear();
 
 		virtual vector<Entry32*> get_directory();
 

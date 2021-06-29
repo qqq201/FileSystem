@@ -2,9 +2,10 @@
 #include "fat.h"
 #define BACKBUTTON1 1
 #define BACKBUTTON2 2
+#define SHOWDELETED 3
 
 string disks;
-bool read_folder = true;
+bool read_folder = true, drawn = false, show_deleted = true;
 string current_disk = "\\\\.\\?:";
 
 HWND main_hwnd, fs_hwnd, directory_hwnd, menu_hwnd;
@@ -15,11 +16,9 @@ vector<Entry32*> entries;
 
 RECT path_rect = {230, 15, 720, 40};
 
-bool drawn = false;
-
 FAT32* fat = NULL;
 
-int nline = 0;
+int nline = 0, s_prevx = 1, s_prevy = 1;
 
 void filesystem_handle(){
   fat = new FAT32(current_disk.c_str());
@@ -27,6 +26,10 @@ void filesystem_handle(){
   ReadSector(current_disk.c_str(), buff, 0);
   fat->read_bootsector(buff);
   fat->read_rdet();
+}
+
+int max(int a, int b){
+  return (a > b)? a : b;
 }
 
 LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -51,8 +54,6 @@ void load_directory(HWND hwnd);
 
 void main_to_fs(HWND hwnd);
 
-HWND CreateAHorizontalScrollBar(HWND hwndParent, int sbHeight);
-
 void draw_button(LPDRAWITEMSTRUCT Item, wchar_t* file, UINT text_align);
 
 void draw_entry_button(LPDRAWITEMSTRUCT Item, Entry32* entry);
@@ -72,6 +73,8 @@ void SD_OnVScroll(HWND hwnd, UINT code);
 void SD_ScrollClient(HWND hwnd, int bar, int pos);
 
 int SD_GetScrollPos(HWND hwnd, int bar, UINT code);
+
+void reset_scroll(HWND hwnd);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInst, LPSTR args, int nCmdShow){
   Gdiplus::GdiplusStartupInput gpStartupInput;
@@ -111,6 +114,7 @@ LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       break;
     }
     case WM_DESTROY:{
+      EnumChildWindows(hwnd, DestoryChildCallback, 0);
       PostQuitMessage(0);
       break;
     }
@@ -125,7 +129,7 @@ LRESULT CALLBACK menu_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
       LPDRAWITEMSTRUCT Item = (LPDRAWITEMSTRUCT)lParam;
       for (int i = 0; i < disks.size(); ++i){
           if (Item->CtlID == i){
-            draw_button(Item, L"assets/disk.png", DT_CENTER);
+            draw_button(Item, (LPWSTR)L"assets/disk.png", DT_CENTER);
           }
       }
       break;
@@ -144,12 +148,26 @@ LRESULT CALLBACK menu_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
       break;
     }
     case WM_DESTROY:{
+      EnumChildWindows(hwnd, DestoryChildCallback, 0);
       PostQuitMessage(0);
       break;
     }
   }
 
   return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+void reset_scroll(HWND hwnd){
+  SCROLLINFO si = {};
+  si.cbSize = sizeof(SCROLLINFO);
+  si.fMask = SIF_ALL;
+  GetScrollInfo(hwnd, SB_VERT, &si);
+  si.nPos = 0;
+  s_prevx = 1;
+  s_prevy = 1;
+  si.nTrackPos = 0;
+  si.nMax = max(nline * 630 / 37, 1);
+  SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
 }
 
 LRESULT CALLBACK fs_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
@@ -182,6 +200,8 @@ LRESULT CALLBACK fs_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
       load_directory_window(hwnd);
       CreateWindowW(L"Button", L"🡠", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 10, 0, 30, 30, hwnd, (HMENU) BACKBUTTON1, NULL, NULL);
       CreateWindowW(L"Button", L"🡠", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 205, 15, 25, 25, hwnd, (HMENU) BACKBUTTON2, NULL, NULL);
+      CreateWindowW(L"button", L"Show deleted files/folders", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 10, 300, 200, 20, hwnd, (HMENU) SHOWDELETED, NULL, NULL);
+      CheckDlgButton(hwnd, SHOWDELETED, BST_CHECKED);
       break;
     }
     case WM_COMMAND: {
@@ -189,23 +209,39 @@ LRESULT CALLBACK fs_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
         case BACKBUTTON1: {
           ShowWindow(menu_hwnd, SW_SHOW);
           ShowWindow(hwnd, SW_HIDE);
+          delete fat;
+          fat = NULL;
           break;
         }
         case BACKBUTTON2: {
           fat->back_parent_directory();
           read_folder = true;
-          drawn = false;
+          EnumChildWindows(directory_hwnd, DestoryChildCallback, 0);
           InvalidateRect(directory_hwnd, NULL, TRUE);
           RedrawWindow(directory_hwnd, NULL, NULL, RDW_INTERNALPAINT);
           InvalidateRect(fs_hwnd, &path_rect, TRUE);
           RedrawWindow(fs_hwnd, &path_rect, NULL, RDW_INTERNALPAINT);
           load_directory(directory_hwnd);
+          reset_scroll(directory_hwnd);
+          break;
+        }
+        case SHOWDELETED: {
+          show_deleted = !show_deleted;
+          if (read_folder){
+            drawn = false;
+            EnumChildWindows(directory_hwnd, DestoryChildCallback, 0);
+            InvalidateRect(directory_hwnd, NULL, TRUE);
+            RedrawWindow(directory_hwnd, NULL, NULL, RDW_INTERNALPAINT);
+            load_directory(directory_hwnd);
+            reset_scroll(directory_hwnd);
+          }
           break;
         }
       }
       break;
     }
     case WM_DESTROY:{
+      EnumChildWindows(hwnd, DestoryChildCallback, 0);
       PostQuitMessage(0);
       break;
     }
@@ -232,21 +268,18 @@ void SD_OnVScroll(HWND hwnd, UINT code) {
 }
 
 void SD_ScrollClient(HWND hwnd, int bar, int pos) {
-    static int s_prevx = 1;
-    static int s_prevy = 1;
+  int cx = 0;
+  int cy = 0;
 
-    int cx = 0;
-    int cy = 0;
+  int& delta = cy;
+  int& prev = s_prevy;
 
-    int& delta = cy;
-    int& prev = s_prevy;
+  delta = prev - pos;
+  prev = pos;
 
-    delta = prev - pos;
-    prev = pos;
-
-    if(cx || cy) {
-      ScrollWindow(hwnd, cx, cy, NULL, NULL);
-    }
+  if(cx || cy) {
+    ScrollWindow(hwnd, cx, cy, NULL, NULL);
+  }
 }
 
 int SD_GetScrollPos(HWND hwnd, int bar, UINT code) {
@@ -293,10 +326,6 @@ int SD_GetScrollPos(HWND hwnd, int bar, UINT code) {
     return result;
 }
 
-int max(int a, int b){
-  return (a > b)? a : b;
-}
-
 LRESULT CALLBACK directory_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
   SCROLLINFO si;
 
@@ -305,37 +334,31 @@ LRESULT CALLBACK directory_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
       SD_OnVScroll(hwnd, LOWORD(wParam));
       break;
     }
-    case WM_CREATE:{
-      SetScrollRange(hwnd, SB_VERT, 0, 700, true);
-      break;
-    }
     case WM_PAINT: {
       SCROLLINFO si = {};
       si.cbSize = sizeof(SCROLLINFO);
-      si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE | SIF_TRACKPOS;
+      si.fMask = SIF_ALL;
       GetScrollInfo(hwnd, SB_VERT, &si);
-      int pos = si.nTrackPos;
 
-      //if (read_folder){
       PAINTSTRUCT ps;
       HDC hdc = BeginPaint(hwnd, &ps);
       if (!drawn){
         drawn = true;
         if(read_folder)
-          draw_title_bar(hdc, pos);
+          draw_title_bar(hdc, si.nPos);
         else{
-          print_file(hdc, pos);
-          SetScrollRange(hwnd, SB_VERT, 0, max(nline * 20, 1), true);
+          print_file(hdc, si.nPos);
         }
       }
       else if (!read_folder){
-        print_file(hdc, pos);
+        print_file(hdc, si.nPos);
       }
       else {
-        draw_title_bar(hdc, pos);
+        draw_title_bar(hdc, si.nPos);
       }
       EndPaint(hwnd, &ps);
       ReleaseDC(hwnd, hdc);
+
       break;
     }
     case WM_DRAWITEM:{
@@ -357,15 +380,21 @@ LRESULT CALLBACK directory_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
       InvalidateRect(fs_hwnd, &path_rect, TRUE);
       RedrawWindow(fs_hwnd, &path_rect, NULL, RDW_INTERNALPAINT);
 
-      if (!read_folder)
+
+      if (!read_folder){
         load_file(cd);
+        nline = file_content.length() / 82;
+      }
       else{
         drawn = false;
         load_directory(hwnd);
       }
+
+      reset_scroll(hwnd);
       break;
     }
     case WM_DESTROY:{
+      EnumChildWindows(hwnd, DestoryChildCallback, 0);
       PostQuitMessage(0);
       break;
     }
@@ -456,9 +485,18 @@ void load_directory(HWND hwnd){
   int button_width = 700, button_height = 25, i = 0;
 
   for (Entry32* entry : content){
-    CreateWindowA("Button", "", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 5, 40 + i * (button_height + 15), button_width, button_height, hwnd, (HMENU) i, NULL, NULL);
-    ++i;
+    if (entry->isDeleted){
+      if (show_deleted){
+        CreateWindowA("Button", "", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 5, 40 + i * (button_height + 15), button_width, button_height, hwnd, (HMENU) i, NULL, NULL);
+        ++i;
+      }
+    }
+    else{
+      CreateWindowA("Button", "", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 5, 40 + i * (button_height + 15), button_width, button_height, hwnd, (HMENU) i, NULL, NULL);
+      ++i;
+    }
   }
+  nline = 2 * i;
 }
 
 void main_to_fs(HWND hwnd){
@@ -550,18 +588,12 @@ void print_file(HDC hdc, int pos){
   Gdiplus::SolidBrush brush(Gdiplus::Color(255, 0, 0, 0));
   Gdiplus::FontFamily fontFamily(L"Consolas");
   Gdiplus::Font font(&fontFamily, 11, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint);
-  Gdiplus::PointF point1(5, 5 - pos);
 
   wstringstream wss;
   int len = file_content.length();
-  int i;
-  for (i = 0; i < len; i += 82){
-    wss << file_content.substr(i, 82).c_str() << "\n";
-  }
-
-  nline = i / 82;
-  graphics.DrawString(wss.str().c_str(), -1, &font, point1, &brush);
-  //TextOutA(hdc, 5, 5, content.c_str(), content.length());
+  Gdiplus::RectF rect(0, 0 - pos, 700, 650 + pos);
+  wss << file_content.c_str();
+  graphics.DrawString(wss.str().c_str(), len, &font, rect, NULL, &brush);
 }
 
 void draw_title_bar(HDC hdc, int pos) {
