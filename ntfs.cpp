@@ -11,6 +11,7 @@
 using namespace std;
 
 signed long long TwoElement(unsigned long long num);
+string hex_to_val(string str);
 
 char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 WORD default_sector_size = 512;
@@ -139,7 +140,7 @@ class NTFS {
 
 		unsigned long long find_sector_attribute(string data)
 		{
-			unsigned long long i = 512;
+			unsigned long long i = 2;
 			char* buff = new char[512];
 			while (true)
 			{
@@ -147,9 +148,23 @@ class NTFS {
 				ReadSector(disk, buff, 2*Sc + i);
 
 				for (int j=0; j<512; j++){
-					if(buff[j] == data[0]){
-						for(int z=0; z<data.length(); z++){
-							if(buff[j+z] != data[z]){
+					stringstream ss;
+
+					ss << ((buff[j] & 0xF0) >> 4);
+					ss << ((buff[j] & 0x0F) >> 0);
+
+					string str_ss = hex_to_val(ss.str());
+
+					if(str_ss[0] == data[0]){
+						for(int z=1; z<data.length(); z++){
+							stringstream sss;
+
+							sss << ((buff[j+z*2] & 0xF0) >> 4);
+							sss << ((buff[j+z*2] & 0x0F) >> 0);
+
+							string str_sss = hex_to_val(ss.str());
+
+							if(str_sss[0] != data[z]){
 								check = 0;
 								break;
 							}else{
@@ -169,8 +184,10 @@ class NTFS {
 		void read_mft() {
 			char* buff = new char[512];
 
-			ReadSector(disk, buff,2*Sc);
-			print_sector(buff);
+			if (find_sector_attribute("folder1") != 0){
+				ReadSector(disk, buff,find_sector_attribute("folder1"));
+				print_sector(buff);
+			}
 			
 			unsigned long long  offset_to_start;
 			offset_to_start = little_edian_char(buff, 20, 2);
@@ -292,6 +309,19 @@ signed long long TwoElement(unsigned long long num){
 
     return -1*result;
     
+}
+string hex_to_val(string str)
+{
+    string res;
+    res.reserve(str.size() / 2);
+    for (int i = 0; i < str.size(); i += 2)
+    {
+        std::istringstream iss(str.substr(i, 2));
+        int temp;
+        iss >> std::hex >> temp;
+        res += static_cast<char>(temp);
+    }
+    return res;
 }
 
 int main(){

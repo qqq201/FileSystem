@@ -4,6 +4,7 @@
 #include <bitset>
 #include <algorithm>
 #include<math.h>
+#include<string>
 using namespace std;
 
 string findTwoscomplement(string str)
@@ -113,18 +114,23 @@ signed long long TwoElement(unsigned long long num){
     
 }
 
-
+string hex_to_val(string str)
+{
+    string res;
+    res.reserve(str.size() / 2);
+    for (int i = 0; i < str.size(); i += 2)
+    {
+        std::istringstream iss(str.substr(i, 2));
+        int temp;
+        iss >> std::hex >> temp;
+        res += static_cast<char>(temp);
+    }
+    return res;
+}
 
 int main()
 {
-    vector<int> vt = ToBinary(4285525909);
-    //vt.push_back(3);
-    // for(int i : vt){
-    //     cout << i;
-    // }
-    //cout << endl << vt.back();
 
-    cout << TwoElement(4285525909);
-  
+
     return 0;
 }
