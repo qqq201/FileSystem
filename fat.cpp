@@ -59,7 +59,7 @@ bool get_logical_disks(string& disks){
 		return false;
 }
 
-bool ReadSector(const char *disk, char*& buff, DWORD sector) {
+bool ReadSector(const char *disk, char*& buff, unsigned long long sector) {
 	DWORD dwRead;
 	HANDLE hDisk = CreateFile(disk, GENERIC_READ, FILE_SHARE_VALID_FLAGS, 0, OPEN_EXISTING, 0, 0);
 	if(hDisk == INVALID_HANDLE_VALUE){
@@ -67,7 +67,12 @@ bool ReadSector(const char *disk, char*& buff, DWORD sector) {
 		return false;
 	}
 
-	SetFilePointer(hDisk, sector * default_sector_size, 0, FILE_BEGIN);
+	ULARGE_INTEGER location;
+	location.QuadPart = sector * default_sector_size;
+	DWORD low = location.LowPart;
+	LONG high = location.HighPart;
+
+	SetFilePointer(hDisk, low, (PLONG)&high, FILE_BEGIN); // which sector to read
 	ReadFile(hDisk, buff, default_sector_size, &dwRead, 0);
 	CloseHandle(hDisk);
 	return true;

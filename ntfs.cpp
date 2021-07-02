@@ -38,7 +38,12 @@ bool ReadSector(const char *disk, char*& buff, unsigned long long sector) {
 		return false;
 	}
 
-	SetFilePointer(hDisk, sector * default_sector_size, 0, FILE_BEGIN); // which sector to read
+	ULARGE_INTEGER location;
+	location.QuadPart = sector * default_sector_size;
+	DWORD low = location.LowPart;
+	LONG high = location.HighPart;
+
+	SetFilePointer(hDisk, low, (PLONG) &high, FILE_BEGIN); // which sector to read
 	ReadFile(hDisk, buff, default_sector_size, &dwRead, 0);
 	CloseHandle(hDisk);
 	return true;
@@ -140,17 +145,10 @@ class NTFS {
 				default_sector_size = little_edian_char(buff, 11, 2);
 				Sc = buff[13];
 				mft_cluster = little_edian_char(buff, 48, 8);
-				unsigned long long bytepercluster = Sc * default_sector_size;
-				MFTLocation.QuadPart = mft_cluster * bytepercluster;
-				int i = 10;
-				while (i != 18){
-					char* buff = new char[bytepercluster];
-					ReadSector_mft(MFTLocation.LowPart, MFTLocation.HighPart, bytepercluster, disk, buff, 2 * i);
-					print_sector(buff);
-					cout << endl;
-					++i;
-				}
-				cout << MFTLocation.QuadPart << endl;
+
+				char* buff = new char[512];
+				ReadSector(disk, buff, mft_cluster * Sc + 2);
+				print_sector(buff);
 				size_mft_entry = little_edian_char(buff, 64, 1);
 				Sv = little_edian_char(buff, 40, 8);
 				return true;
@@ -378,7 +376,7 @@ int main(){
 			if (ReadSector(disk.c_str(), buff, 0)){
 				NTFS ntfs(disk.c_str());
 				ntfs.read_pbs(buff);
-				ntfs.read_mft();
+				//ntfs.read_mft();
 			}
 			else {
 				cout << "Error while reading\n";

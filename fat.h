@@ -159,7 +159,7 @@ Entry32* getEntry(string data, int extraEntries, string path);
 
 bool get_logical_disks(string& disks);
 
-bool ReadSector(const char *disk, char*& buff, DWORD sector);
+bool ReadSector(const char *disk, char*& buff, unsigned long long sector);
 
 void print_sector(char*& buff);
 
