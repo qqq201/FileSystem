@@ -8,25 +8,41 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
-#include <iomanip>
 #include <cstdlib>
+#include <iomanip>
 using namespace std;
 
-//extern const char* main_disk;
-//extern int default_sector_size;
+struct Date {
+	int year;
+	int month;
+	int day;
+	int hour;
+	int minute;
+	int second;
+};
 
 class Entry32 {
 	protected:
 		vector<DWORD> clusters;
-		vector<bool> status;
-		string name;
-		string root;
-		unsigned long long size = 0;
 
 	public:
-		Entry32(string rootName);
+		vector<bool> status;
+		string name;
+		string ext;
+		string root;
+		bool isRoot = false;
+		bool isDeleted;
+		Date created;
+		Date modified;
+		unsigned long long size = 0;
+		Entry32* parent = NULL;
+
+		Entry32(string rootName, Entry32* parent);
+		~Entry32();
 
 		void readStatus(string dataEntry, int numExtraEntry);
+
+		void readState(string dataEntry, int numExtraEntry);
 
 		void readClusters(string dataEntry, int numExtraEntry);
 
@@ -34,70 +50,78 @@ class Entry32 {
 
 		void readDate(string dataEntry, int numExtraEntry);
 
-		virtual void get_directory(int step) = 0;
+		string get_modified_date();
 
-		virtual unsigned long long get_size() = 0;
+		string get_size();
+
+		virtual void clear() = 0;
+
+		virtual string get_path() = 0;
+
+		virtual vector<Entry32*> get_directory() = 0;
+
+		virtual string get_content() = 0;
+
+		virtual Entry32* get_entry(int id) = 0;
 
 		virtual void readEntry(string dataEntry, int numExtraEntry) = 0;
 
-		virtual void print_info();
-
-		virtual void print_content() = 0;
-
-		virtual bool type() = 0;
+		virtual bool type() = 0; //file: false, folder: true
 };
 
 class File32 : public Entry32{
-	private:
-		string ext = "";
-
 	public:
-		File32(string rootName);
+		File32(string rootName, Entry32* parent);
+		~File32();
 
 		void readExt(string dataEntry, int numExtraEntry);
 
 		void readSize(string dataEntry);
 
-		virtual unsigned long long get_size();
+		virtual void clear();
+
+		virtual vector<Entry32*> get_directory();
+
+		virtual string get_content();
 
 		virtual void readEntry(string dataEntry, int numExtraEntry);
 
-		virtual void print_info();
-
-		virtual void print_content();
+		virtual string get_path();
 
 		virtual bool type();
 
-		virtual void get_directory(int step);
+		virtual Entry32* get_entry(int id);
 };
 
 class Folder32 : public Entry32 {
-	private:
-		vector<Entry32*> entries;
-		bool isRoot = false;
 	public:
-		Folder32(string rootName);
+		vector<Entry32*> entries;
+
+		Folder32(string rootName, Entry32* parent);
+		~Folder32();
 
 		void set_as_root(vector<DWORD>& clusters);
 
-		virtual unsigned long long get_size();
+		virtual void clear();
+
+		virtual vector<Entry32*> get_directory();
+
+		virtual string get_content();
 
 		virtual void readEntry(string dataEntry, int numExtraEntry);
 
-		virtual void print_info();
-
-		virtual void print_content();
+		virtual string get_path();
 
 		virtual bool type();
 
-		virtual void get_directory(int step);
+		virtual Entry32* get_entry(int id);
 };
 
 class FAT32 {
 	private:
 		vector<DWORD> rdet_clusters;
 		Folder32* root = NULL;
-
+		Entry32* current_directory = NULL;
 	public:
 		static const char* disk;
 		static int Sc;
@@ -114,15 +138,21 @@ class FAT32 {
 
 		bool read_bootsector(char* data);
 
-		void get_bs_info();
+		string get_bs_info();
 
 		void read_rdet();
 
-		void get_rdet_info();
-
-		void print_tree();
+		string get_path();
 
 		static vector<DWORD> read_fat(DWORD cluster);
+
+		Entry32* change_directory(int id);
+
+		Entry32* back_parent_directory();
+
+		Entry32* get_current_directory();
+
+		string get_cd_path();
 };
 
 Entry32* getEntry(string data, int extraEntries, string path);
