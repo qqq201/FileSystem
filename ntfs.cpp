@@ -3,10 +3,9 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
-#include <iostream>
 #include <string>
 #include <vector>
-#include<math.h>
+#include <math.h>
 #include <algorithm>
 using namespace std;
 
@@ -19,7 +18,7 @@ WORD default_sector_size = 512;
 bool get_logical_disks(string& disks){
 	DWORD mydrives = 64;// buffer length
 	char lpBuffer[64] {0};// buffer for drive string storage
-	
+
 	if (GetLogicalDriveStrings(mydrives, lpBuffer)){
 		for(int i = 0; i < 50; i++){
 			if (isalpha(lpBuffer[i]))
@@ -32,7 +31,7 @@ bool get_logical_disks(string& disks){
 }
 
 bool ReadSector(const char *disk, char*& buff, unsigned long long sector) {
-	DWORD dwRead;   
+	DWORD dwRead;
 	HANDLE hDisk = CreateFile(disk,GENERIC_READ,FILE_SHARE_VALID_FLAGS,0,OPEN_EXISTING,0,0);
 	if(hDisk == INVALID_HANDLE_VALUE){
 		CloseHandle(hDisk);
@@ -43,6 +42,18 @@ bool ReadSector(const char *disk, char*& buff, unsigned long long sector) {
 	ReadFile(hDisk, buff, default_sector_size, &dwRead, 0);
 	CloseHandle(hDisk);
 	return true;
+}
+
+void ReadSector_mft(DWORD low, LONG high, unsigned long long bytepercluster, const char *disk, char*& buff, unsigned long long sector){
+	DWORD dwRead;
+	HANDLE hDisk = CreateFile(disk,GENERIC_READ,FILE_SHARE_VALID_FLAGS,0,OPEN_EXISTING,0,0);
+	if(hDisk == INVALID_HANDLE_VALUE){
+		CloseHandle(hDisk);
+	}
+
+	SetFilePointer(hDisk, low + default_sector_size * sector,(PLONG) &high, FILE_BEGIN);
+	ReadFile(hDisk, buff, bytepercluster, &dwRead, NULL);
+	CloseHandle(hDisk);
 }
 
 void print_sector(char*& buff){
@@ -59,7 +70,7 @@ void print_sector(char*& buff){
 			for (int j = i - 15; j <= i; ++j){
 				if (isalpha(buff[j]) || isdigit(buff[j]))
 					cout << buff[j];
-				else 
+				else
 					cout << ".";
 			}
 			cout << endl;
@@ -129,7 +140,17 @@ class NTFS {
 				default_sector_size = little_edian_char(buff, 11, 2);
 				Sc = buff[13];
 				mft_cluster = little_edian_char(buff, 48, 8);
-				//cout << mft_cluster;
+				unsigned long long bytepercluster = Sc * default_sector_size;
+				MFTLocation.QuadPart = mft_cluster * bytepercluster;
+				int i = 10;
+				while (i != 18){
+					char* buff = new char[bytepercluster];
+					ReadSector_mft(MFTLocation.LowPart, MFTLocation.HighPart, bytepercluster, disk, buff, 2 * i);
+					print_sector(buff);
+					cout << endl;
+					++i;
+				}
+				cout << MFTLocation.QuadPart << endl;
 				size_mft_entry = little_edian_char(buff, 64, 1);
 				Sv = little_edian_char(buff, 40, 8);
 				return true;
@@ -178,7 +199,7 @@ class NTFS {
 
 				if(2*Sc + i > (Sv / 512)) return 0;
 			}
-			
+
 		}
 
 		void read_mft() {
@@ -188,7 +209,7 @@ class NTFS {
 				ReadSector(disk, buff,find_sector_attribute("folder1"));
 				print_sector(buff);
 			}
-			
+
 			unsigned long long  offset_to_start;
 			offset_to_start = little_edian_char(buff, 20, 2);
 			int size_10 = buff[offset_to_start + 4];
@@ -243,7 +264,7 @@ class NTFS {
 			for (int i=1; i<clusters.size(); i++){
 				clusters[i].first += clusters[i-1].first;	//clusters
 			}
-			
+
 		}
 };
 
@@ -308,7 +329,7 @@ signed long long TwoElement(unsigned long long num){
     }
 
     return -1*result;
-    
+
 }
 string hex_to_val(string str)
 {
