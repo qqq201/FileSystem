@@ -32,6 +32,7 @@ int main(){
 			char* buff = new char[512];
 			if (ReadSector(disk.c_str(), buff, 0)){
 				FAT32 fat(disk.c_str());
+				char* buff = new char[512];
 				if(fat.read_bootsector(buff)){
 					fat.read_rdet();
 				}

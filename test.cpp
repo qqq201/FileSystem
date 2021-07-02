@@ -615,3 +615,4 @@ void draw_title_bar(HDC hdc, int pos) {
   graphics.DrawString(L"Type", -1, &font, point3, &brush);
   graphics.DrawString(L"Size", -1, &font, point4, &brush);
 }
+
