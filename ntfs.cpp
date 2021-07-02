@@ -4,11 +4,17 @@
 #include <sstream>
 #include <iomanip>
 #include <iostream>
+#include <string>
 #include <vector>
+#include<math.h>
+#include <algorithm>
 using namespace std;
 
+signed long long TwoElement(unsigned long long num);
+string hex_to_val(string str);
+
 char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
-int default_sector_size = 512;
+WORD default_sector_size = 512;
 
 bool get_logical_disks(string& disks){
 	DWORD mydrives = 64;// buffer length
@@ -42,7 +48,7 @@ bool ReadSector(const char *disk, char*& buff, unsigned long long sector) {
 void print_sector(char*& buff){
 	for (int i = 0; i < default_sector_size; ++i){
 		if (i % 16 == 0){
-			cout << setfill('0') << setw(7) << hex << i / 16 << "0: ";
+			cout << setfill('0') << setw(7) << hex_chars[ ((i / 16) & 0xF0) >> 4 ] << hex_chars[ ((i / 16) & 0x0F) >> 0 ] << "0: ";
 		}
 
 		cout << hex_chars[ (buff[i] & 0xF0) >> 4 ];
@@ -76,6 +82,7 @@ unsigned long long little_edian_char(char* data, int start, int nbyte){
 class EntryNTFS {
 	protected:
 		string name;
+		vector< pair<unsigned long long, unsigned long long> > clusters;
 	public:
 		EntryNTFS() {}
 		void print_info() {}
@@ -122,13 +129,9 @@ class NTFS {
 				default_sector_size = little_edian_char(buff, 11, 2);
 				Sc = buff[13];
 				mft_cluster = little_edian_char(buff, 48, 8);
-				char* buff = new char[512];
-				ReadSector(disk, buff, mft_cluster * Sc);
-				print_sector(buff);
-
+				//cout << mft_cluster;
 				size_mft_entry = little_edian_char(buff, 64, 1);
 				Sv = little_edian_char(buff, 40, 8);
-				cout << Sv << endl;
 				return true;
 			}else{
 				return false;
