@@ -287,19 +287,26 @@ vector<Entry32*> File32::get_directory(){
 
 string File32::get_content() {
 	if (this->ext.compare("TXT") == 0){
-		stringstream ss;
+		string str;
+		bool stop = false;
 		for (long long cluster : this->clusters){
+			if (stop)
+				break;
+
 			int sector = FAT32::cluster_to_sector(cluster);
-			for (int s = sector; s < sector + FAT32::Sc; ++s){
+			for (int s = sector; s < sector + FAT32::Sc && !stop; ++s){
 				char* buff = new char[512];
 				if (ReadSector(FAT32::disk, buff, s)){
-					for (int c = 0; c < 512; ++c)
+					for (int c = 0; c < 512 && !stop; ++c)
 						if (buff[c] != 0)
-							ss << buff[c];
+							str.push_back(buff[c]);
+						else
+							stop = true;
 				}
+				delete buff;
 			}
 		}
-		return ss.str();
+		return str;
 	}
 	else {
 		return "-- SORRY, CURRENTLY WE CAN ONLY OPEN TEXT (TXT) FILES --";

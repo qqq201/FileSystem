@@ -1,5 +1,5 @@
-#include <gdiplus.h>
 #include "fat.h"
+#include <gdiplus.h>
 #define BACKBUTTON1 1
 #define BACKBUTTON2 2
 #define SHOWDELETED 3
@@ -615,4 +615,3 @@ void draw_title_bar(HDC hdc, int pos) {
   graphics.DrawString(L"Type", -1, &font, point3, &brush);
   graphics.DrawString(L"Size", -1, &font, point4, &brush);
 }
-
