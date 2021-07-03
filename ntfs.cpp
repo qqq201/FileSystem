@@ -146,9 +146,9 @@ class NTFS {
 				Sc = buff[13];
 				mft_cluster = little_edian_char(buff, 48, 8);
 
-				char* buff = new char[512];
-				ReadSector(disk, buff, mft_cluster * Sc + 2);
-				print_sector(buff);
+				//char* buff = new char[512];
+				//ReadSector(disk, buff, mft_cluster * Sc + 2);
+				//print_sector(buff);
 				size_mft_entry = little_edian_char(buff, 64, 1);
 				Sv = little_edian_char(buff, 40, 8);
 				return true;
@@ -181,7 +181,7 @@ class NTFS {
 							sss << ((buff[j+z*2] & 0xF0) >> 4);
 							sss << ((buff[j+z*2] & 0x0F) >> 0);
 
-							string str_sss = hex_to_val(ss.str());
+							string str_sss = hex_to_val(sss.str());
 
 							if(str_sss[0] != data[z]){
 								check = 0;
@@ -200,68 +200,96 @@ class NTFS {
 
 		}
 
-		void read_mft() {
+		void read_mft_file() {
 			char* buff = new char[512];
 
-			if (find_sector_attribute("folder1") != 0){
-				ReadSector(disk, buff,find_sector_attribute("folder1"));
-				print_sector(buff);
-			}
+			ReadSector(disk, buff,mft_cluster*Sc + 40*2);
+			print_sector(buff);
+			
 
 			unsigned long long  offset_to_start;
 			offset_to_start = little_edian_char(buff, 20, 2);
-			int size_10 = buff[offset_to_start + 4];
 
-			int offset_30 = offset_to_start + size_10;
-			int size_30 = buff[offset_30 + 4];
-
-			int offset_80 = offset_to_start + size_10 + size_30;
-			int size_80 = buff[offset_80 + 4];
-
-			unsigned long long start_runlist = offset_80 + little_edian_char(buff, offset_80 + 32, 1);
-			unsigned long long check_runlist = buff[start_runlist];
-
-			vector< pair<unsigned long long, unsigned long long> > clusters;	// cluster bat dau - size
-			unsigned long long size_fragment;
-			signed long long location_fragment = 0; //clusters
-
-			char* p;
-			while(check_runlist != 0){
-				stringstream ss1, ss2;
-				ss1 << ((buff[start_runlist] & 0xF0) >> 4);
-				ss2 << ((buff[start_runlist] & 0x0F) >> 0);
-
-				//cout << "1: " << ((buff[start_runlist] & 0xF0) >> 4) << endl;
-				//cout << "2: " << ((buff[start_runlist] & 0x0F) >> 0) << endl;
-				//cout << check_runlist << endl;
-
-				unsigned long long s1 = strtol(ss1.str().c_str(), &p, 16);
-				unsigned long long s2 = strtol(ss2.str().c_str(), &p, 16);
-
-				size_fragment = little_edian_char(buff, start_runlist + 1, s2);
-				size_fragment *= 4096; // clusters to bytes
-				//cout << "s: " << size_fragment << endl;
-				//location_fragment = location_fragment + little_edian_char(buff, start_runlist + 1 + s2, s1);
-				//location âm => chuyển về dec > 2^(n-1) => số âm => bù 2 để chuyển về số âm
-				unsigned long long dec_compare = little_edian_char(buff, start_runlist + 1 + s2, s1);
-				if ( dec_compare > pow(2,s1*8-1)){
-					location_fragment = TwoElement(dec_compare);
-
-				}else{
-					location_fragment = dec_compare;
+			vector<pair<int, int>> attribute(10, make_pair(0,0));	//  8 attribute dau tien (vitri - size)
+			attribute[0].first = offset_to_start;
+			attribute[0].second = buff[offset_to_start + 4];
+			for (int i=1; i<10; i++){
+				int temp = attribute[0].first;
+				for (int j = i-1; j >=0; j--)
+				{
+					temp +=	attribute[j].second;
 				}
-				//cout << "l: " << location_fragment << endl;
+				
+				int location = little_edian_char(buff, temp, 1);
+				
+				if ((i+1)*16 == location){
+					attribute[i].first = temp;
+					attribute[i].second = buff[attribute[i].first + 4];
+				}else{
+					continue;
+				}
+			}
+			
+			for (int i=0; i<10; i++){
+				cout << i << ": " << attribute[i].first << " - " << attribute[i].second << endl;
+			}
+			int offset_80 = attribute[7].first;
+			int size_80 = attribute[7].second;
 
-				clusters.push_back(make_pair(location_fragment, size_fragment));
+			bool is_nonresident = buff[offset_80 + 8];
 
-				start_runlist += 1 + s1 + s2;
-				check_runlist = buff[start_runlist];
-				cout << check_runlist << endl;
+			if (!is_nonresident){
+				int start_data = little_edian_char(buff, offset_80 + 20, 4);
+				int end_data = buff[offset_80 + 4];
+				int offset_start_data = offset_80 + start_data;
+				int offset_end_data = offset_80 + end_data - 1; // offset truoc FF
+				cout << offset_80 << " " << " " << offset_start_data << " " << offset_end_data << " " << offset_end_data - offset_start_data + 1 << endl;
+				//data start
+				for(int z=offset_start_data; z < offset_end_data; z++){
+					cout << buff[z];
+				}
+
+				// data end
+			}else{
+				unsigned long long start_runlist = offset_80 + little_edian_char(buff, offset_80 + 32, 1);
+				unsigned long long check_runlist = buff[start_runlist];
+
+				vector< pair<unsigned long long, unsigned long long> > clusters;	// cluster bat dau - size
+				unsigned long long size_fragment;
+				signed long long location_fragment = 0; //clusters
+
+				char* p;
+				while(check_runlist != 0){
+					stringstream ss1, ss2;
+					ss1 << ((buff[start_runlist] & 0xF0) >> 4);
+					ss2 << ((buff[start_runlist] & 0x0F) >> 0);
+
+					unsigned long long s1 = strtol(ss1.str().c_str(), &p, 16);
+					unsigned long long s2 = strtol(ss2.str().c_str(), &p, 16);
+
+					size_fragment = little_edian_char(buff, start_runlist + 1, s2);
+					size_fragment *= 4096; // clusters to bytes
+
+					unsigned long long dec_compare = little_edian_char(buff, start_runlist + 1 + s2, s1);
+					if ( dec_compare > pow(2,s1*8-1)){
+						location_fragment = TwoElement(dec_compare);
+
+					}else{
+						location_fragment = dec_compare;
+					}
+
+					clusters.push_back(make_pair(location_fragment, size_fragment));
+
+					start_runlist += 1 + s1 + s2;
+					check_runlist = buff[start_runlist];
+					cout << check_runlist << endl;
+				}
+
+				for (int i=1; i<clusters.size(); i++){
+					clusters[i].first += clusters[i-1].first;	//clusters
+				}
 			}
 
-			for (int i=1; i<clusters.size(); i++){
-				clusters[i].first += clusters[i-1].first;	//clusters
-			}
 
 		}
 };
@@ -376,7 +404,7 @@ int main(){
 			if (ReadSector(disk.c_str(), buff, 0)){
 				NTFS ntfs(disk.c_str());
 				ntfs.read_pbs(buff);
-				//ntfs.read_mft();
+				ntfs.read_mft_file();
 			}
 			else {
 				cout << "Error while reading\n";
