@@ -159,50 +159,51 @@ class NTFS {
 
 		unsigned long long find_sector_attribute(string data)
 		{
-			unsigned long long i = 2;
-			char* buff = new char[512];
+			unsigned long long i = 1;
+			
 			while (true)
 			{
 				bool check = 0;
-				ReadSector(disk, buff, 2*Sc + i);
+				char* buff = new char[512];
+				ReadSector(disk, buff, mft_cluster*Sc + i*2);
 
 				for (int j=0; j<512; j++){
-					stringstream ss;
-
-					ss << ((buff[j] & 0xF0) >> 4);
-					ss << ((buff[j] & 0x0F) >> 0);
-
-					string str_ss = hex_to_val(ss.str());
-
-					if(str_ss[0] == data[0]){
-						for(int z=1; z<data.length(); z++){
-							stringstream sss;
-
-							sss << ((buff[j+z*2] & 0xF0) >> 4);
-							sss << ((buff[j+z*2] & 0x0F) >> 0);
-
-							string str_sss = hex_to_val(sss.str());
-
-							if(str_sss[0] != data[z]){
+					if(buff[j] == data[0]){
+						cout << "-";
+						for(int z=0; z < data.length(); z++){
+							
+							if(buff[j+z*2] != data[z]){
 								check = 0;
 								break;
 							}else{
+								cout << buff[j+z*2] << " ";
 								check = 1;
 							}
 						}
-						if(check == 1) return 2*Sc + i;
+						cout << endl;
+						if(check == 1) return mft_cluster*Sc + i*2;
 					}
 				}
 				i += 1;
 
-				if(2*Sc + i > (Sv / 512)) return 0;
+				if(2*Sc + 2*i > (Sv / 512)) return 0;
 			}
 
 		}
 
+
+
 		void read_mft_file() {
 			char* buff = new char[512];
 
+			// int ii=40;
+			// while (ii != 50)
+			// {
+			// 	ReadSector(disk, buff,mft_cluster*Sc + ii*2);
+			// 	print_sector(buff);
+			// 	ii++;
+			// }
+			
 			ReadSector(disk, buff,mft_cluster*Sc + 40*2);
 			print_sector(buff);
 			
@@ -212,7 +213,7 @@ class NTFS {
 
 			vector<pair<int, int>> attribute(10, make_pair(0,0));	//  8 attribute dau tien (vitri - size)
 			attribute[0].first = offset_to_start;
-			attribute[0].second = buff[offset_to_start + 4];
+			attribute[0].second = little_edian_char(buff, offset_to_start + 4, 4);
 			for (int i=1; i<10; i++){
 				int temp = attribute[0].first;
 				for (int j = i-1; j >=0; j--)
@@ -220,7 +221,7 @@ class NTFS {
 					temp +=	attribute[j].second;
 				}
 				
-				int location = little_edian_char(buff, temp, 1);
+				int location = little_edian_char(buff, temp, 4);
 				
 				if ((i+1)*16 == location){
 					attribute[i].first = temp;
@@ -233,6 +234,11 @@ class NTFS {
 			for (int i=0; i<10; i++){
 				cout << i << ": " << attribute[i].first << " - " << attribute[i].second << endl;
 			}
+
+			//switch case
+			// name
+
+
 			int offset_80 = attribute[7].first;
 			int size_80 = attribute[7].second;
 
@@ -288,9 +294,37 @@ class NTFS {
 				for (int i=1; i<clusters.size(); i++){
 					clusters[i].first += clusters[i-1].first;	//clusters
 				}
+				
+				cout << endl;
+				//ReadSector(disk, buff,Sc*clusters[0].first);
+				//print_sector(buff);
 			}
 
 
+		}
+
+		void read_mft_folder(){
+			char* buff = new char[512];
+
+			// int ii=39*2;
+			// while (ii != 43*2)
+			// {
+			// 	ReadSector(disk, buff,mft_cluster*Sc + ii);
+			// 	print_sector(buff);
+			// 	ii++;
+			// }return;
+
+			unsigned long long ll = find_sector_attribute("folder1");
+			//cout << "right: " << mft_cluster*Sc + 39*2 << endl;
+			if ( ll != 0){
+				ReadSector(disk, buff, ll+5);
+				print_sector(buff);
+				cout << endl << ll << endl;
+			}
+
+
+
+			return;
 		}
 };
 
@@ -405,6 +439,7 @@ int main(){
 				NTFS ntfs(disk.c_str());
 				ntfs.read_pbs(buff);
 				ntfs.read_mft_file();
+				//ntfs.read_mft_folder();
 			}
 			else {
 				cout << "Error while reading\n";
