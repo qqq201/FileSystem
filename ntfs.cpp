@@ -134,6 +134,15 @@ class NTFS {
 
 		FolderNTFS* root;
 
+		struct Date {
+			int year;
+			int month;
+			int day;
+			int hour;
+			int minute;
+			int second;
+		};
+
 	public:
 		NTFS(const char* disk) {
 			this->disk = disk;
@@ -169,18 +178,14 @@ class NTFS {
 
 				for (int j=0; j<512; j++){
 					if(buff[j] == data[0]){
-						cout << "-";
 						for(int z=0; z < data.length(); z++){
-							
 							if(buff[j+z*2] != data[z]){
 								check = 0;
 								break;
 							}else{
-								cout << buff[j+z*2] << " ";
 								check = 1;
 							}
 						}
-						cout << endl;
 						if(check == 1) return mft_cluster*Sc + i*2;
 					}
 				}
@@ -196,18 +201,24 @@ class NTFS {
 		void read_mft_file() {
 			char* buff = new char[512];
 
-			// int ii=40;
-			// while (ii != 50)
+			unsigned long long ll = find_sector_attribute("test1.txt");
+			if ( ll != 0){
+				ReadSector(disk, buff, ll);
+				print_sector(buff);
+				cout << endl << ll << endl;
+			}else return;
+
+			// long long ll=49*2;
+			// while (ll!=55*2)
 			// {
-			// 	ReadSector(disk, buff,mft_cluster*Sc + ii*2);
+			// 	ReadSector(disk, buff,mft_cluster*Sc + ll);
 			// 	print_sector(buff);
-			// 	ii++;
+			// 	ll++;
 			// }
 			
-			ReadSector(disk, buff,mft_cluster*Sc + 40*2);
-			print_sector(buff);
+			//ReadSector(disk, buff,4494*Sc);
+			//print_sector(buff);
 			
-
 			unsigned long long  offset_to_start;
 			offset_to_start = little_edian_char(buff, 20, 2);
 
@@ -236,9 +247,27 @@ class NTFS {
 			}
 
 			//switch case
-			// name
+
+			//offset 10 - last time modified
+			int offset_creation_time = little_edian_char(buff, attribute[0].first + 20, 2) + attribute[0].first;
+			int offset_modified_time = offset_creation_time + 8;
 
 
+
+			//Offset 30 - file name
+			int offset_start_content_filename = little_edian_char(buff, attribute[2].first + 20, 2) + attribute[2].first;
+			int length_filename = little_edian_char(buff, offset_start_content_filename + 64, 1)*2;
+			int offset_start_name =  offset_start_content_filename + 66;
+			int offset_end_name =  offset_start_name + length_filename;
+			string filename;
+			for (int i = offset_start_name; i < offset_end_name; i++)
+			{
+				filename.push_back(buff[i]);
+			}
+			cout << filename << endl;
+			
+
+			// Offset 80
 			int offset_80 = attribute[7].first;
 			int size_80 = attribute[7].second;
 
@@ -249,7 +278,7 @@ class NTFS {
 				int end_data = buff[offset_80 + 4];
 				int offset_start_data = offset_80 + start_data;
 				int offset_end_data = offset_80 + end_data - 1; // offset truoc FF
-				cout << offset_80 << " " << " " << offset_start_data << " " << offset_end_data << " " << offset_end_data - offset_start_data + 1 << endl;
+				long long  size_of_data = offset_end_data - offset_start_data + 1;	// size data in resident
 				//data start
 				for(int z=offset_start_data; z < offset_end_data; z++){
 					cout << buff[z];
@@ -257,10 +286,12 @@ class NTFS {
 
 				// data end
 			}else{
+				long long actual_size_data = little_edian_char(buff, offset_80 + 48, 8);
+
 				unsigned long long start_runlist = offset_80 + little_edian_char(buff, offset_80 + 32, 1);
 				unsigned long long check_runlist = buff[start_runlist];
 
-				vector< pair<unsigned long long, unsigned long long> > clusters;	// cluster bat dau - size
+				vector< pair<unsigned long long, unsigned long long> > clusters;	// cluster bat dau - size(byte)
 				unsigned long long size_fragment;
 				signed long long location_fragment = 0; //clusters
 
@@ -296,8 +327,9 @@ class NTFS {
 				}
 				
 				cout << endl;
-				//ReadSector(disk, buff,Sc*clusters[0].first);
-				//print_sector(buff);
+				for (int i=0; i<clusters.size(); i++){
+					cout << clusters[i].first << " - " << clusters[i].second << endl;
+				}
 			}
 
 
@@ -438,8 +470,8 @@ int main(){
 			if (ReadSector(disk.c_str(), buff, 0)){
 				NTFS ntfs(disk.c_str());
 				ntfs.read_pbs(buff);
-				ntfs.read_mft_file();
-				//ntfs.read_mft_folder();
+				//ntfs.read_mft_file();
+				ntfs.read_mft_folder();
 			}
 			else {
 				cout << "Error while reading\n";
