@@ -30,7 +30,7 @@ bool get_logical_disks(string& disks){
 		return false;
 }
 
-bool ReadSector(const char *disk, char*& buff, unsigned long long sector) {
+bool ReadSector(const char *disk, char* buff, unsigned long long sector, unsigned long long nsector) {
 	DWORD dwRead;
 	HANDLE hDisk = CreateFile(disk,GENERIC_READ,FILE_SHARE_VALID_FLAGS,0,OPEN_EXISTING,0,0);
 	if(hDisk == INVALID_HANDLE_VALUE){
@@ -44,25 +44,13 @@ bool ReadSector(const char *disk, char*& buff, unsigned long long sector) {
 	LONG high = location.HighPart;
 
 	SetFilePointer(hDisk, low, (PLONG) &high, FILE_BEGIN); // which sector to read
-	ReadFile(hDisk, buff, default_sector_size, &dwRead, 0);
+	ReadFile(hDisk, buff, default_sector_size * nsector, &dwRead, 0);
 	CloseHandle(hDisk);
 	return true;
 }
 
-void ReadSector_mft(DWORD low, LONG high, unsigned long long bytepercluster, const char *disk, char*& buff, unsigned long long sector){
-	DWORD dwRead;
-	HANDLE hDisk = CreateFile(disk,GENERIC_READ,FILE_SHARE_VALID_FLAGS,0,OPEN_EXISTING,0,0);
-	if(hDisk == INVALID_HANDLE_VALUE){
-		CloseHandle(hDisk);
-	}
-
-	SetFilePointer(hDisk, low + default_sector_size * sector,(PLONG) &high, FILE_BEGIN);
-	ReadFile(hDisk, buff, bytepercluster, &dwRead, NULL);
-	CloseHandle(hDisk);
-}
-
-void print_sector(char*& buff){
-	for (int i = 0; i < default_sector_size; ++i){
+void print_sector(char* buff, int n){
+	for (int i = 0; i < default_sector_size * n; ++i){
 		if (i % 16 == 0){
 			cout << setfill('0') << setw(7) << hex_chars[ ((i / 16) & 0xF0) >> 4 ] << hex_chars[ ((i / 16) & 0x0F) >> 0 ] << "0: ";
 		}
@@ -150,7 +138,7 @@ class NTFS {
 
 		bool read_pbs(char* buff) {
 			if((unsigned char)buff[510] == 0x55 && (unsigned char)buff[511] == 0xaa){
-				print_sector(buff);
+				print_sector(buff, 1);
 				default_sector_size = little_edian_char(buff, 11, 2);
 				Sc = buff[13];
 				mft_cluster = little_edian_char(buff, 48, 8);
@@ -169,12 +157,12 @@ class NTFS {
 		unsigned long long find_sector_attribute(string data)
 		{
 			unsigned long long i = 1;
-			
+
 			while (true)
 			{
 				bool check = 0;
 				char* buff = new char[512];
-				ReadSector(disk, buff, mft_cluster*Sc + i*2);
+				ReadSector(disk, buff, mft_cluster*Sc + i*2, 1);
 
 				for (int j=0; j<512; j++){
 					if(buff[j] == data[0]){
@@ -196,15 +184,95 @@ class NTFS {
 
 		}
 
+		void read_index_buffer(vector<pair<unsigned long long, unsigned long long>> clusters){
+			cout << "File in this folder:\n";
+
+			for (auto cluster : clusters){
+				//index header 24 bytes
+				int ih_start_offset = 0;
+				int ih_end_offfset = 23;
+				int nh_start_offset = 24;
+				int nh_end_offset = 39;
+
+				// check if this is an index buffer
+				char* buff = new char[cluster.second];
+				ReadSector(disk, buff, cluster.first * Sc, cluster.second / default_sector_size);
+
+				string indx;
+				for (int i = ih_start_offset; i < 4; ++i)
+					indx.push_back(buff[i]);
+
+				if (indx != "INDX")
+					continue;
+
+				DWORD eh_start_offset = little_edian_char(buff, nh_start_offset, 4) + nh_start_offset;
+				DWORD index_node_length = little_edian_char(buff, nh_start_offset + 4, 4) - 16 - eh_start_offset + nh_start_offset;
+				int offset_attribute_content = 16;
+
+				while (index_node_length > 0){
+					unsigned long long mft_id = little_edian_char(buff, eh_start_offset, 6);
+					WORD index_length = little_edian_char(buff, eh_start_offset + 8, 2);
+					char* test = new char[512];
+					ReadSector(disk, test, mft_id * 2 + Sc * mft_cluster, 1);
+					print_sector(test, 1);
+					eh_start_offset += index_length;
+					index_node_length -= index_length;
+				}
+
+				delete[] buff;
+			}
+		}
+
+		void file_name_attribute(char* buff, DWORD start_offset, DWORD length) {
+
+		}
+
+		void standard_info_attribute(char* buff, DWORD start_offset, DWORD length){
+
+		}
+
+		void data_attribute(char* buff, DWORD start_offset, DWORD length){
+
+		}
+
+		void index_root_attribute(char* buff, DWORD start_offset, DWORD length){
+
+		}
+
+		void index_location_attribute(char* buff, DWORD start_offset, DWORD length){
+
+		}
 
 
+		void attributes_handler(char* buff, int type, DWORD start_offset, DWORD length) {
+			if (buff[start_offset] != (type + 1) * 16)
+				return;
+
+			switch(type){
+				case 0: //x10
+					standard_info_attribute(buff, start_offset, length);
+					break;
+				case 2: //x30
+					file_name_attribute(buff, start_offset, length);
+					break;
+				case 7: //x80
+					data_attribute(buff, start_offset, length);
+					break;
+				case 8: //x90
+					index_root_attribute(buff, start_offset, length);
+					break;
+				case 9: //xA0
+					index_location_attribute(buff, start_offset, length);
+					break;
+			}
+		}
 		void read_mft_file() {
-			char* buff = new char[512];
+			char* buff = new char[1024];
 
 			unsigned long long ll = find_sector_attribute("test1.txt");
 			if ( ll != 0){
-				ReadSector(disk, buff, ll);
-				print_sector(buff);
+				ReadSector(disk, buff, ll, 1);
+				print_sector(buff, 1);
 				cout << endl << ll << endl;
 			}else return;
 
@@ -215,10 +283,10 @@ class NTFS {
 			// 	print_sector(buff);
 			// 	ll++;
 			// }
-			
+
 			//ReadSector(disk, buff,4494*Sc);
 			//print_sector(buff);
-			
+
 			unsigned long long  offset_to_start;
 			offset_to_start = little_edian_char(buff, 20, 2);
 
@@ -231,9 +299,9 @@ class NTFS {
 				{
 					temp +=	attribute[j].second;
 				}
-				
+
 				int location = little_edian_char(buff, temp, 4);
-				
+
 				if ((i+1)*16 == location){
 					attribute[i].first = temp;
 					attribute[i].second = buff[attribute[i].first + 4];
@@ -241,7 +309,7 @@ class NTFS {
 					continue;
 				}
 			}
-			
+
 			for (int i=0; i<10; i++){
 				cout << i << ": " << attribute[i].first << " - " << attribute[i].second << endl;
 			}
@@ -265,7 +333,7 @@ class NTFS {
 				filename.push_back(buff[i]);
 			}
 			cout << filename << endl;
-			
+
 
 			// Offset 80
 			int offset_80 = attribute[7].first;
@@ -325,7 +393,7 @@ class NTFS {
 				for (int i=1; i<clusters.size(); i++){
 					clusters[i].first += clusters[i-1].first;	//clusters
 				}
-				
+
 				cout << endl;
 				for (int i=0; i<clusters.size(); i++){
 					cout << clusters[i].first << " - " << clusters[i].second << endl;
@@ -349,8 +417,8 @@ class NTFS {
 			unsigned long long ll = find_sector_attribute("folder1");
 			//cout << "right: " << mft_cluster*Sc + 39*2 << endl;
 			if ( ll != 0){
-				ReadSector(disk, buff, ll+5);
-				print_sector(buff);
+				ReadSector(disk, buff, ll+5, 1);
+				print_sector(buff, 1);
 				cout << endl << ll << endl;
 			}
 
@@ -467,11 +535,11 @@ int main(){
 
 			//read first sector and determine which filesystem
 			char* buff = new char[512];
-			if (ReadSector(disk.c_str(), buff, 0)){
+			if (ReadSector(disk.c_str(), buff, 0, 1)){
 				NTFS ntfs(disk.c_str());
 				ntfs.read_pbs(buff);
 				//ntfs.read_mft_file();
-				ntfs.read_mft_folder();
+				//ntfs.read_mft_folder();
 			}
 			else {
 				cout << "Error while reading\n";
