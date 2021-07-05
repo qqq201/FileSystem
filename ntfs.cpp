@@ -224,106 +224,7 @@ class NTFS {
 		}
 
 		void file_name_attribute(char* buff, DWORD start_offset, DWORD length) {
-
-		}
-
-		void standard_info_attribute(char* buff, DWORD start_offset, DWORD length){
-
-		}
-
-		void data_attribute(char* buff, DWORD start_offset, DWORD length){
-
-		}
-
-		void index_root_attribute(char* buff, DWORD start_offset, DWORD length){
-
-		}
-
-		void index_location_attribute(char* buff, DWORD start_offset, DWORD length){
-
-		}
-
-
-		void attributes_handler(char* buff, int type, DWORD start_offset, DWORD length) {
-			if (buff[start_offset] != (type + 1) * 16)
-				return;
-
-			switch(type){
-				case 0: //x10
-					standard_info_attribute(buff, start_offset, length);
-					break;
-				case 2: //x30
-					file_name_attribute(buff, start_offset, length);
-					break;
-				case 7: //x80
-					data_attribute(buff, start_offset, length);
-					break;
-				case 8: //x90
-					index_root_attribute(buff, start_offset, length);
-					break;
-				case 9: //xA0
-					index_location_attribute(buff, start_offset, length);
-					break;
-			}
-		}
-		void read_mft_file() {
-			char* buff = new char[1024];
-
-			unsigned long long ll = find_sector_attribute("test1.txt");
-			if ( ll != 0){
-				ReadSector(disk, buff, ll, 1);
-				print_sector(buff, 1);
-				cout << endl << ll << endl;
-			}else return;
-
-			// long long ll=49*2;
-			// while (ll!=55*2)
-			// {
-			// 	ReadSector(disk, buff,mft_cluster*Sc + ll);
-			// 	print_sector(buff);
-			// 	ll++;
-			// }
-
-			//ReadSector(disk, buff,4494*Sc);
-			//print_sector(buff);
-
-			unsigned long long  offset_to_start;
-			offset_to_start = little_edian_char(buff, 20, 2);
-
-			vector<pair<int, int>> attribute(10, make_pair(0,0));	//  8 attribute dau tien (vitri - size)
-			attribute[0].first = offset_to_start;
-			attribute[0].second = little_edian_char(buff, offset_to_start + 4, 4);
-			for (int i=1; i<10; i++){
-				int temp = attribute[0].first;
-				for (int j = i-1; j >=0; j--)
-				{
-					temp +=	attribute[j].second;
-				}
-
-				int location = little_edian_char(buff, temp, 4);
-
-				if ((i+1)*16 == location){
-					attribute[i].first = temp;
-					attribute[i].second = buff[attribute[i].first + 4];
-				}else{
-					continue;
-				}
-			}
-
-			for (int i=0; i<10; i++){
-				cout << i << ": " << attribute[i].first << " - " << attribute[i].second << endl;
-			}
-
-			//switch case
-
-			//offset 10 - last time modified
-			int offset_creation_time = little_edian_char(buff, attribute[0].first + 20, 2) + attribute[0].first;
-			int offset_modified_time = offset_creation_time + 8;
-
-
-
-			//Offset 30 - file name
-			int offset_start_content_filename = little_edian_char(buff, attribute[2].first + 20, 2) + attribute[2].first;
+			int offset_start_content_filename = little_edian_char(buff, start_offset + 20, 2) + start_offset;
 			int length_filename = little_edian_char(buff, offset_start_content_filename + 64, 1)*2;
 			int offset_start_name =  offset_start_content_filename + 66;
 			int offset_end_name =  offset_start_name + length_filename;
@@ -332,31 +233,37 @@ class NTFS {
 			{
 				filename.push_back(buff[i]);
 			}
-			cout << filename << endl;
+			cout << "filename: " << filename << endl;
+		}
 
+		void standard_info_attribute(char* buff, DWORD start_offset, DWORD length){
+			int offset_creation_time = little_edian_char(buff, start_offset + 20, 2) + start_offset;
+			int offset_modified_time = offset_creation_time + 8;
+			unsigned long long value = little_edian_char(buff, offset_modified_time, 8);
+			FILETIME ft = { 0 };
 
-			// Offset 80
-			int offset_80 = attribute[7].first;
-			int size_80 = attribute[7].second;
+			ft.dwHighDateTime = (value & 0xffffffff00000000) >> 32;
+			ft.dwLowDateTime = value & 0xffffffff;
+		}
 
-			bool is_nonresident = buff[offset_80 + 8];
+		void data_attribute(char* buff, DWORD start_offset, DWORD length){
+			bool is_nonresident = buff[start_offset + 8];
 
 			if (!is_nonresident){
-				int start_data = little_edian_char(buff, offset_80 + 20, 4);
-				int end_data = buff[offset_80 + 4];
-				int offset_start_data = offset_80 + start_data;
-				int offset_end_data = offset_80 + end_data - 1; // offset truoc FF
+				int start_data = little_edian_char(buff, start_offset + 20, 4);
+				int end_data = buff[start_offset + 4];
+				int offset_start_data = start_offset + start_data;
+				int offset_end_data = start_offset + end_data - 1; // offset truoc FF
 				long long  size_of_data = offset_end_data - offset_start_data + 1;	// size data in resident
 				//data start
 				for(int z=offset_start_data; z < offset_end_data; z++){
 					cout << buff[z];
 				}
-
 				// data end
 			}else{
-				long long actual_size_data = little_edian_char(buff, offset_80 + 48, 8);
+				long long actual_size_data = little_edian_char(buff, start_offset + 48, 8);
 
-				unsigned long long start_runlist = offset_80 + little_edian_char(buff, offset_80 + 32, 1);
+				unsigned long long start_runlist = start_offset + little_edian_char(buff, start_offset + 32, 2);
 				unsigned long long check_runlist = buff[start_runlist];
 
 				vector< pair<unsigned long long, unsigned long long> > clusters;	// cluster bat dau - size(byte)
@@ -399,31 +306,194 @@ class NTFS {
 					cout << clusters[i].first << " - " << clusters[i].second << endl;
 				}
 			}
+		}
+
+		void index_root_attribute(char* buff, DWORD start_offset, DWORD length){
+			int offset_to_AtrContent = little_edian_char(buff, start_offset + 20, 2) + start_offset;
+
+			bool flag_nonresident = little_edian_char(buff, offset_to_AtrContent + 28 , 4);
+			//cout << "flag: " << flag_nonresident << endl;
+			
+			if(!flag_nonresident){
+				int offset_start_node = offset_to_AtrContent + 16 + little_edian_char(buff, offset_to_AtrContent + 16, 4);
+				int length_node = little_edian_char(buff, offset_to_AtrContent + 20, 4);
+
+				vector<int> id_mft;
+				length_node -= 16;
+				for (int i=length_node; i>0; ){
+					int temp = little_edian_char(buff, offset_start_node, 6);
+					if (temp!=0) id_mft.push_back(temp);
+					temp = little_edian_char(buff, offset_start_node + 8, 2);
+					cout << i << " " << temp << endl;
+					i -= temp;
+					offset_start_node += temp;
+				}
+				for (auto i:id_mft){
+					cout << i << " - " ;
+				}cout << endl;
+			}
+		}
+
+		void index_location_attribute(char* buff, DWORD start_offset, DWORD length){
+			unsigned long long start_runlist = start_offset + little_edian_char(buff, start_offset + 32, 2);
+			unsigned long long check_runlist = buff[start_runlist];
+
+			vector< pair<unsigned long long, unsigned long long> > clusters;	// cluster bat dau - size(byte)
+			unsigned long long size_fragment;
+			signed long long location_fragment = 0; //clusters
+
+			char* p;
+			while(check_runlist != 0){
+				stringstream ss1, ss2;
+				ss1 << ((buff[start_runlist] & 0xF0) >> 4);
+				ss2 << ((buff[start_runlist] & 0x0F) >> 0);
+
+				unsigned long long s1 = strtol(ss1.str().c_str(), &p, 16);
+				unsigned long long s2 = strtol(ss2.str().c_str(), &p, 16);
+
+				size_fragment = little_edian_char(buff, start_runlist + 1, s2);
+				size_fragment *= 4096; // clusters to bytes
+
+				unsigned long long dec_compare = little_edian_char(buff, start_runlist + 1 + s2, s1);
+				if ( dec_compare > pow(2,s1*8-1)){
+					location_fragment = TwoElement(dec_compare);
+
+				}else{
+					location_fragment = dec_compare;
+				}
+
+				clusters.push_back(make_pair(location_fragment, size_fragment));
+
+				start_runlist += 1 + s1 + s2;
+				check_runlist = buff[start_runlist];
+				cout << check_runlist << endl;
+			}
+
+			for (int i=1; i<clusters.size(); i++){
+				clusters[i].first += clusters[i-1].first;	//clusters
+			}
+
+			cout << endl;
+			for (int i=0; i<clusters.size(); i++){
+				cout << clusters[i].first << " - " << clusters[i].second << endl;
+			}
+			
+			// DAt
+			read_index_buffer(clusters);
+
+			//ReadSector(disk, buff, 4495*Sc, 2);
+			//print_sector(buff, 2);
+		}
 
 
+		void attributes_handler(char* buff, int type, DWORD start_offset, DWORD length) {
+			if (length == 0)
+				return;
+
+			switch(type){
+				case 0: //x10
+					standard_info_attribute(buff, start_offset, length);
+					break;
+				case 2: //x30
+					file_name_attribute(buff, start_offset, length);
+					break;
+				case 7:{ //x80
+					cout << "kah";
+					data_attribute(buff, start_offset, length);
+					break;
+				}
+				case 8: //x90
+					index_root_attribute(buff, start_offset, length);
+					break;
+				case 9: //xA0
+					index_location_attribute(buff, start_offset, length);
+					break;
+			}
+		}
+		void read_mft_file() {
+			char* buff = new char[default_sector_size*2];
+
+			unsigned long long ll = find_sector_attribute("test2.txt");
+			if ( ll != 0){
+				ReadSector(disk, buff, ll, 2);
+				print_sector(buff, 2);
+				cout << endl << ll << endl;
+			}else return;
+
+			unsigned long long  offset_to_start;
+			offset_to_start = little_edian_char(buff, 20, 2);
+
+			vector<pair<int, int>> attribute(10, make_pair(0,0));	//  8 attribute dau tien (vitri - size)
+			attribute[0].first = offset_to_start;
+			attribute[0].second = little_edian_char(buff, offset_to_start + 4, 4);
+			for (int i=1; i<10; i++){
+				int temp = attribute[0].first;
+				for (int j = i-1; j >=0; j--)
+				{
+					temp +=	attribute[j].second;
+				}
+
+				int location = little_edian_char(buff, temp, 4);
+
+				if ((i+1)*16 == location){
+					attribute[i].first = temp;
+					attribute[i].second = little_edian_char(buff, attribute[i].first + 4, 4);
+				}else{
+					continue;
+				}
+			}
+
+			for (int i=0; i<10; i++){
+				cout << i << ": " << attribute[i].first << " - " << attribute[i].second << endl;
+			}
+
+			for(int i=0; i<10; i++){
+				attributes_handler(buff, i, attribute[i].first, attribute[i].second);
+			}
 		}
 
 		void read_mft_folder(){
-			char* buff = new char[512];
+			char* buff = new char[default_sector_size*2];
 
-			// int ii=39*2;
-			// while (ii != 43*2)
-			// {
-			// 	ReadSector(disk, buff,mft_cluster*Sc + ii);
-			// 	print_sector(buff);
-			// 	ii++;
-			// }return;
-
-			unsigned long long ll = find_sector_attribute("folder1");
-			//cout << "right: " << mft_cluster*Sc + 39*2 << endl;
+			unsigned long long ll = find_sector_attribute("folder2");
 			if ( ll != 0){
-				ReadSector(disk, buff, ll+5, 1);
-				print_sector(buff, 1);
+				//ll = mft_cluster*Sc + 42*2;
+				ReadSector(disk, buff, ll, 2);
+				print_sector(buff, 2);
 				cout << endl << ll << endl;
 			}
 
+			unsigned long long  offset_to_start;
+			offset_to_start = little_edian_char(buff, 20, 2);
 
+			vector<pair<DWORD, DWORD>> attribute(10, make_pair(0,0));	//  8 attribute dau tien (vitri - size)
+			attribute[0].first = offset_to_start;
+			attribute[0].second = little_edian_char(buff, offset_to_start + 4, 4);
+			for (int i=1; i<10; i++){
+				int temp = attribute[0].first;
+				for (int j = i-1; j >=0; j--)
+				{
+					temp +=	attribute[j].second;
+				}
 
+				int location = little_edian_char(buff, temp, 4);
+
+				if ((i+1)*16 == location){
+					attribute[i].first = temp;
+					attribute[i].second = little_edian_char(buff, attribute[i].first + 4, 4);
+				}else{
+					continue;
+				}
+			}
+
+			for (int i=0; i<10; i++){
+				cout << i << ": " << attribute[i].first << " - " << attribute[i].second << endl;
+			}
+
+			for(int i=0; i<10; i++){
+				attributes_handler(buff, i, attribute[i].first, attribute[i].second);
+			}
+			
 			return;
 		}
 };
@@ -539,7 +609,7 @@ int main(){
 				NTFS ntfs(disk.c_str());
 				ntfs.read_pbs(buff);
 				//ntfs.read_mft_file();
-				//ntfs.read_mft_folder();
+				ntfs.read_mft_folder();
 			}
 			else {
 				cout << "Error while reading\n";
