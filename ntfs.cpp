@@ -130,6 +130,7 @@ signed long long TwoElement(unsigned long long num){
   return -1 * result;
 }
 
+
 EntryNTFS::EntryNTFS(unsigned long long mft_id, EntryNTFS* parent) {
 	this->mft_id = mft_id;
 	this->parent = parent;
@@ -171,7 +172,6 @@ void EntryNTFS::read_index_buffer(){
 				eh_start_offset += index_length;
 				index_node_length -= index_length;
 			}
-
 			delete[] buff;
 		}
 	}
@@ -307,7 +307,6 @@ void EntryNTFS::index_location_attribute(char* buff){
 			location_fragment = dec_compare;
 
 		clusters.push_back(make_pair(location_fragment, size_fragment));
-
 		start_runlist += 1 + s1 + s2;
 		check_runlist = buff[start_runlist];
 	}
