@@ -130,15 +130,18 @@ signed long long TwoElement(unsigned long long num){
   return -1 * result;
 }
 
-
-EntryNTFS::EntryNTFS(unsigned long long mft_id, EntryNTFS* parent) {
+EntryNTFS::EntryNTFS(unsigned long long mft_id, string path, EntryNTFS* parent) {
 	this->mft_id = mft_id;
 	this->parent = parent;
+	this->root = path;
+}
+
+EntryNTFS::~EntryNTFS(){
+
 }
 
 void EntryNTFS::read_index_buffer(){
 	if (is_nonresident){
-		cout << "File in this folder:\n";
 		for (auto cluster : clusters){
 			//index header 24 bytes
 			int ih_start_offset = 0;
@@ -164,9 +167,9 @@ void EntryNTFS::read_index_buffer(){
 				WORD index_length = little_edian_char(buff, eh_start_offset + 8, 2);
 
 				if (index_length > 16 && !read[mft_id]){
-					EntryNTFS* new_file = new EntryNTFS(mft_id, this);
+					EntryNTFS* new_file = new EntryNTFS(mft_id, this->root + this->name + "/", this);
 					new_file->read_content();
-					childs.push_back(new_file);
+					entries.push_back(new_file);
 				}
 
 				eh_start_offset += index_length;
@@ -188,6 +191,17 @@ void EntryNTFS::file_name_attribute(char* buff) {
 
 	for (int i = offset_start_name; i < offset_end_name; i++)
 		name.push_back(buff[i]);
+
+	if (!type()){
+		int pos = name.length() - 1;
+		while (name[pos] != '.' && pos > 0)
+			--pos;
+
+		if (pos > 0){
+			this->ext = this->name.substr(pos + 1, name.length() - pos);
+			this->name = this->name.substr(0, pos);
+		}
+	}
 }
 
 void EntryNTFS::standard_info_attribute(char* buff){
@@ -201,7 +215,7 @@ void EntryNTFS::standard_info_attribute(char* buff){
 	ft.dwHighDateTime = little_edian_char(buff, offset_modified_time + 4, 4);
 	ft.dwLowDateTime = little_edian_char(buff, offset_modified_time, 4);
 
-	FileTimeToSystemTime(&ft, &this->sys);
+	FileTimeToSystemTime(&ft, &this->modified);
 }
 
 void EntryNTFS::data_attribute(char* buff){
@@ -215,7 +229,7 @@ void EntryNTFS::data_attribute(char* buff){
 		int end_data = buff[start_offset + 4];
 		int offset_start_data = start_offset + start_data;
 		int offset_end_data = start_offset + end_data - 1; // offset truoc FF
-		long long  size_of_data = offset_end_data - offset_start_data + 1;	// size data in resident
+		this->size = offset_end_data - offset_start_data + 1;	// size data in resident
 
 		//data start
 		file_content.erase();
@@ -223,7 +237,7 @@ void EntryNTFS::data_attribute(char* buff){
 			file_content.push_back(buff[z]);
 	}
 	else{
-		long long actual_size_data = little_edian_char(buff, start_offset + 48, 8);
+		this->size = little_edian_char(buff, start_offset + 48, 8);
 
 		unsigned long long start_runlist = start_offset + little_edian_char(buff, start_offset + 32, 2);
 		unsigned long long check_runlist = buff[start_runlist];
@@ -273,9 +287,9 @@ void EntryNTFS::index_root_attribute(char* buff){
 			int mft_id = little_edian_char(buff, offset_start_node, 6);
 			int index_length = little_edian_char(buff, offset_start_node + 8, 2);
 			if (index_length > 16 && !read[mft_id]){
-				EntryNTFS* new_file = new EntryNTFS(mft_id, this);
+				EntryNTFS* new_file = new EntryNTFS(mft_id, this->root, this);
 				new_file->read_content();
-				childs.push_back(new_file);
+				entries.push_back(new_file);
 			}
 			length_node -= index_length;
 			offset_start_node += index_length;
@@ -380,7 +394,7 @@ void EntryNTFS::read_content() {
 	}
 }
 
-string EntryNTFS::read_file(){
+string EntryNTFS::get_content(){
 	if (is_nonresident){
 		string str;
 		for (auto cluster : clusters){
@@ -398,15 +412,91 @@ string EntryNTFS::read_file(){
 	}
 }
 
-bool EntryNTFS::isFolder(){
+bool EntryNTFS::type(){
 	return (attributes[8].first > 0 && attributes[8].second > 0);
+}
+
+string EntryNTFS::get_modified_date(){
+	stringstream ss;
+	ss << this->modified.wDay << "/" << this->modified.wMonth << "/" << this->modified.wYear << " " << this->modified.wHour << ":";
+	if (this->modified.wMinute < 10)
+		ss << "0" << this->modified.wMinute;
+	else
+		ss << this->modified.wMinute;
+
+	return ss.str();
+}
+
+float my_round(float var){
+	int value = (int)(var * 100);
+  return (float)value / 100;
+}
+
+string EntryNTFS::get_size(){
+	if (this->type())
+		return "";
+	else if (this->size > 0){
+		vector<string> unit = {" Bytes", " KB", " MB", " GB"};
+		float temp = this->size;
+		stringstream ss;
+
+		for (int i = 0; i < 4; ++i){
+			if (to_string(int(temp)).length() < 5){
+				ss << my_round(temp) << unit[i];
+				return ss.str();
+			}
+			temp /= 1024.0;
+		}
+
+		ss << my_round(temp) << " TB";
+		return ss.str();
+	}
+	else {
+		return "0 Bytes";
+	}
+}
+
+vector<string> EntryNTFS::get_info(){
+	vector<string> info;
+
+	info.push_back(this->name);
+
+	info.push_back(get_modified_date());
+	if (type())
+		info.push_back("File folder");
+	else
+		info.push_back(this->ext);
+
+	info.push_back(get_size());
+
+	return info;
+}
+
+vector<EntryNTFS*> EntryNTFS::get_directory(){
+	return entries;
+}
+
+string EntryNTFS::get_path(){
+	if (type())
+		return this->root + this->name;
+	else
+		return this->root + this->name + "." + this->ext;
+}
+
+EntryNTFS* EntryNTFS::get_entry(int id){
+	if (id < this->entries.size())
+		return this->entries[id];
+	return NULL;
 }
 
 NTFS::NTFS(const char* disk) { this->disk = disk; }
 
+NTFS::~NTFS(){
+
+}
+
 bool NTFS::read_pbs(char* buff) {
 	if((unsigned char)buff[510] == 0x55 && (unsigned char)buff[511] == 0xaa){
-		print_sector(buff, 1);
 		default_sector_size = little_edian_char(buff, 11, 2);
 		Sc = buff[13];
 		mft_cluster = little_edian_char(buff, 48, 8);
@@ -419,6 +509,35 @@ bool NTFS::read_pbs(char* buff) {
 }
 
 void NTFS::read_mft(){
-	root = new EntryNTFS(5, NULL);
+	root = new EntryNTFS(5, "", NULL);
 	root->read_content();
+	current_directory = root;
+}
+
+string NTFS::get_pbs_info(){
+	stringstream ss;
+
+	ss << "Sector size: " << default_sector_size << " Bytes\n";
+	ss << "Volume size: " << Sv / 2097152.0 << " GB\n";
+	ss << "Sectors per cluster: " << Sc << endl;
+	ss << "MFT first cluster: " << mft_cluster << endl;
+	return ss.str();
+}
+
+EntryNTFS* NTFS::change_directory(int id){
+	this->current_directory = this->current_directory->get_entry(id);
+	return this->current_directory;
+}
+
+EntryNTFS* NTFS::back_parent_directory(){
+	this->current_directory = this->current_directory->parent;
+	return this->current_directory;
+}
+
+EntryNTFS* NTFS::get_current_directory(){
+	return this->current_directory;
+}
+
+string NTFS::get_cd_path(){
+	return this->current_directory->get_path();
 }

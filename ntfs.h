@@ -15,7 +15,9 @@ using namespace std;
 class EntryNTFS {
 	public:
 		string name;
-		SYSTEMTIME sys = { 0 };
+		string ext;
+		string root;
+		SYSTEMTIME modified = { 0 };
 		bool isRoot = false;
 		unsigned long long size = 0;
 		EntryNTFS* parent = NULL;
@@ -27,9 +29,11 @@ class EntryNTFS {
 
 		vector<pair<unsigned long long, unsigned long long>> clusters;
 
-    vector<EntryNTFS*> childs;
+    vector<EntryNTFS*> entries;
 
-		EntryNTFS(unsigned long long mft_id, EntryNTFS* parent);
+		EntryNTFS(unsigned long long mft_id, string path, EntryNTFS* parent);
+
+		~EntryNTFS();
 
     void read_index_buffer();
 
@@ -47,15 +51,27 @@ class EntryNTFS {
 
     void read_content();
 
-    bool isFolder();
+    bool type();
 
-    string read_file();
+    string get_content();
+
+		string get_modified_date();
+
+		string get_size();
+
+		vector<string> get_info();
+
+		vector<EntryNTFS*> get_directory();
+
+		string get_path();
+
+		EntryNTFS* get_entry(int id);
 };
 
 class NTFS {
   private:
-		EntryNTFS* root;
-    EntryNTFS* current_directory;
+		EntryNTFS* root = NULL;
+    EntryNTFS* current_directory = NULL;
 
 	public:
 		static const char* disk;
@@ -66,9 +82,21 @@ class NTFS {
 
 		NTFS(const char* disk);
 
+		~NTFS();
+
     bool read_pbs(char* buff);
 
     void read_mft();
+
+		string get_pbs_info();
+
+		EntryNTFS* change_directory(int id);
+
+		EntryNTFS* back_parent_directory();
+
+		EntryNTFS* get_current_directory();
+
+		string get_cd_path();
 };
 
 bool get_logical_disks(string& disks);
