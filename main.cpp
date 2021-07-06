@@ -1,7 +1,7 @@
-#include "fat.h"
+#include "ntfs.h"
 
 int main(){
-	//set title
+	//set tile
 	SetConsoleTitleA("Filesystem reader");
 	//set white console
 	system("color f0");
@@ -14,7 +14,7 @@ int main(){
 		//list drives
 		cout << "Your current disks:\n";
 		for (char disk : disks){
-			cout << "├━ " << disk << ":\\\n│\n";
+			cout << "└- " << disk << ":\\\n│\n";
 		}
 
 		//select drive
@@ -30,13 +30,11 @@ int main(){
 
 			//read first sector and determine which filesystem
 			char* buff = new char[512];
-			if (ReadSector(disk.c_str(), buff, 0)){
-				FAT32 fat(disk.c_str());
-				char* buff = new char[512];
-				if(fat.read_bootsector(buff)){
-					fat.read_rdet();
-				}
-				//}
+			if (ReadSector(disk.c_str(), buff, 0, 1)){
+				NTFS ntfs(disk.c_str());
+				ntfs.read_pbs(buff);
+				ntfs.read_mft();
+				//ntfs.read_mft_folder();
 			}
 			else {
 				cout << "Error while reading\n";
