@@ -238,7 +238,7 @@ vector<string> Entry32::get_info(){
 	return info;
 }
 
-float round(float var){
+float my_round(float var){
 	int value = (int)(var * 100);
   return (float)value / 100;
 }
@@ -253,13 +253,13 @@ string Entry32::get_size(){
 
 		for (int i = 0; i < 4; ++i){
 			if (to_string(int(temp)).length() < 5){
-				ss << round(temp) << unit[i];
+				ss << my_round(temp) << unit[i];
 				return ss.str();
 			}
 			temp /= 1024.0;
 		}
 
-		ss << round(temp) << " TB";
+		ss << my_round(temp) << " TB";
 		return ss.str();
 	}
 	else {
@@ -308,24 +308,25 @@ vector<Entry32*> File32::get_directory(){
 
 string File32::get_content() {
 	if (this->ext.compare("TXT") == 0){
+		unsigned long long max_cluster = 3;
 		string str;
 		bool stop = false;
 		for (long long cluster : this->clusters){
-			if (stop)
+			if (stop || max_cluster == 0)
 				break;
 
 			int sector = FAT32::cluster_to_sector(cluster);
-			for (int s = sector; s < sector + FAT32::Sc && !stop; ++s){
-				char* buff = new char[512];
-				if (ReadSector(FAT32::disk, buff, s)){
-					for (int c = 0; c < 512 && !stop; ++c)
-						if (buff[c] != 0)
-							str.push_back(buff[c]);
-						else
-							stop = true;
-				}
-				delete buff;
+			int read_size = default_sector_size * FAT32::Sc;
+			char* buff = new char[read_size];
+			if (ReadSector(FAT32::disk, buff, sector, FAT32::Sc)){
+				for (int c = 0; c < read_size && !stop; ++c)
+					if (buff[c] != 0)
+						str.push_back(buff[c]);
+					else
+						stop = true;
 			}
+			delete buff;
+			--max_cluster;
 		}
 		return str;
 	}
@@ -912,18 +913,25 @@ bool EntryNTFS::read_content() {
 string EntryNTFS::get_content(){
 	if (is_nonresident){
 		if (this->ext.compare("txt") == 0){
+			unsigned long long max_size = 12282;
 			string str;
 			bool stop = false;
 			for (auto cluster : clusters){
-				if (stop)
+				if (stop || max_size == 0)
 					break;
-				char* buff = new char[cluster.second];
-				ReadSector(NTFS::disk, buff, cluster.first * NTFS::Sc, cluster.second / default_sector_size);
-				for (int i = 0; i < cluster.second && !stop; ++i)
+
+				int read_size = min(cluster.second, max_size);
+				char* buff = new char[read_size];
+				ReadSector(NTFS::disk, buff, cluster.first * NTFS::Sc, ceil(read_size * 1.0 / default_sector_size));
+
+				for (int i = 0; i < read_size && !stop; ++i){
 					if (buff[i])
 						str.push_back(buff[i]);
 					else
 						stop = true;
+				}
+
+				max_size -= read_size;
 
 				delete[] buff;
 			}
@@ -962,13 +970,13 @@ string EntryNTFS::get_size(){
 
 		for (int i = 0; i < 4; ++i){
 			if (to_string(int(temp)).length() < 5){
-				ss << round(temp) << unit[i];
+				ss << my_round(temp) << unit[i];
 				return ss.str();
 			}
 			temp /= 1024.0;
 		}
 
-		ss << round(temp) << " TB";
+		ss << my_round(temp) << " TB";
 		return ss.str();
 	}
 	else {

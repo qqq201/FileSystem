@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <iomanip>
+#include <math.h>
 using namespace std;
 
 class Entry32 {
