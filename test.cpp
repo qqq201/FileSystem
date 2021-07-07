@@ -30,7 +30,7 @@ void filesystem_handler(){
     ntfs_str.push_back(buff[i]);
   }
 
-  for (int i = 52; i < 57; ++i)
+  for (int i = 82; i < 87; ++i)
     fat32_str.push_back(buff[i]);
 
   if (fat32_str.compare("FAT32") == 0){
@@ -83,12 +83,18 @@ void draw_title_bar(HDC hdc, int pos);
 
 void load_file(){
   if (fs_type){
-    Entry32* entry = fat->get_current_directory();
-    file_content = entry->get_content();
+    if (fat){
+      Entry32* entry = fat->get_current_directory();
+      if (entry)
+        file_content = entry->get_content();
+    }
   }
   else {
-    EntryNTFS* entry = ntfs->get_current_directory();
-    file_content = entry->get_content();
+    if (ntfs){
+      EntryNTFS* entry = ntfs->get_current_directory();
+      if (entry)
+        file_content = entry->get_content();
+    }
   }
 }
 
@@ -407,14 +413,22 @@ LRESULT CALLBACK directory_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_DRAWITEM:{
       LPDRAWITEMSTRUCT Item = (LPDRAWITEMSTRUCT)lParam;
       if (fs_type){
-        Entry32* current_directory = fat->get_current_directory();
-        Entry32* entry = current_directory->get_entry(Item->CtlID);
-        draw_entry_button(Item, entry->get_info(), entry->type());
+        if (fat){
+          Entry32* current_directory = fat->get_current_directory();
+          if (current_directory){
+            Entry32* entry = current_directory->get_entry(Item->CtlID);
+            draw_entry_button(Item, entry->get_info(), entry->type());
+          }
+        }
       }
       else {
-        EntryNTFS* current_directory = ntfs->get_current_directory();
-        EntryNTFS* entry = current_directory->get_entry(Item->CtlID);
-        draw_entry_button(Item, entry->get_info(), entry->type());
+        if (ntfs){
+          EntryNTFS* current_directory = ntfs->get_current_directory();
+          if (current_directory){
+            EntryNTFS* entry = current_directory->get_entry(Item->CtlID);
+            draw_entry_button(Item, entry->get_info(), entry->type());
+          }
+        }
       }
       break;
     }
@@ -422,12 +436,18 @@ LRESULT CALLBACK directory_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
       drawn = false;
       int id = LOWORD(wParam);
       if (fs_type){
-        Entry32* cd = fat->change_directory(id);
-        read_folder = cd->type();
+        if(fat){
+          Entry32* cd = fat->change_directory(id);
+          if (cd)
+            read_folder = cd->type();
+        }
       }
       else{
-        EntryNTFS* cd = ntfs->change_directory(id);
-        read_folder = cd->type();
+        if (ntfs){
+          EntryNTFS* cd = ntfs->change_directory(id);
+          if (cd)
+            read_folder = cd->type();
+        }
       }
 
       EnumChildWindows(hwnd, DestoryChildCallback, 0);
@@ -450,7 +470,7 @@ LRESULT CALLBACK directory_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
       break;
     }
     case WM_DESTROY:{
-      //EnumChildWindows(hwnd, DestoryChildCallback, 0);
+      EnumChildWindows(hwnd, DestoryChildCallback, 0);
       PostQuitMessage(0);
       break;
     }
@@ -538,29 +558,37 @@ void load_directory(HWND hwnd){
   int button_width = 700, button_height = 25, i = 0;
 
   if (fs_type){
-    Entry32* current_directory = fat->get_current_directory();
-    vector<Entry32*> content = current_directory->get_directory();
+    if (fat){
+      Entry32* current_directory = fat->get_current_directory();
+      if (current_directory){
+        vector<Entry32*> content = current_directory->get_directory();
 
-    for (auto entry : content){
-      if (entry->isDeleted){
-        if (show_deleted){
-          CreateWindowA("Button", "", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 5, 40 + i * (button_height + 15), button_width, button_height, hwnd, (HMENU) i, NULL, NULL);
-          ++i;
+        for (auto entry : content){
+          if (entry->isDeleted){
+            if (show_deleted){
+              CreateWindowA("Button", "", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 5, 40 + i * (button_height + 15), button_width, button_height, hwnd, (HMENU) i, NULL, NULL);
+              ++i;
+            }
+          }
+          else{
+            CreateWindowA("Button", "", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 5, 40 + i * (button_height + 15), button_width, button_height, hwnd, (HMENU) i, NULL, NULL);
+            ++i;
+          }
         }
-      }
-      else{
-        CreateWindowA("Button", "", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 5, 40 + i * (button_height + 15), button_width, button_height, hwnd, (HMENU) i, NULL, NULL);
-        ++i;
       }
     }
   }
   else {
-    EntryNTFS* current_directory = ntfs->get_current_directory();
-    vector<EntryNTFS*> content = current_directory->get_directory();
+    if (ntfs){
+      EntryNTFS* current_directory = ntfs->get_current_directory();
+      if (current_directory){
+        vector<EntryNTFS*> content = current_directory->get_directory();
 
-    for (auto entry : content){
-      CreateWindowA("Button", "", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 5, 40 + i * (button_height + 15), button_width, button_height, hwnd, (HMENU) i, NULL, NULL);
-      ++i;
+        for (auto entry : content){
+          CreateWindowA("Button", "", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 5, 40 + i * (button_height + 15), button_width, button_height, hwnd, (HMENU) i, NULL, NULL);
+          ++i;
+        }
+      }
     }
   }
 
@@ -641,26 +669,34 @@ void print_fs_info(HDC hdc){
   Gdiplus::PointF point2(230, 15);
 
   if (fs_type){
-    string info = "FAT32\n\n" + fat->get_bs_info();
-    wstringstream wss;
-    wss << info.c_str();
-    graphics.DrawString(wss.str().c_str(), -1, &font, point1, &brush);
-    graphics.DrawRectangle(&pen, 200, 10, 740, 30);
+    if (fat){
+      string info = "FAT32\n\n" + fat->get_bs_info();
+      wstringstream wss;
+      wss << info.c_str();
+      graphics.DrawString(wss.str().c_str(), -1, &font, point1, &brush);
+      graphics.DrawRectangle(&pen, 200, 10, 740, 30);
 
-    Entry32* cd = fat->get_current_directory();
-    string path = cd->get_path();
-    DrawTextA(hdc, path.c_str(), path.length(), &path_rect, DT_LEFT);
+      Entry32* cd = fat->get_current_directory();
+      if (cd){
+        string path = cd->get_path();
+        DrawTextA(hdc, path.c_str(), path.length(), &path_rect, DT_LEFT);
+      }
+    }
   }
   else {
-    string info = "NTFS\n\n" + ntfs->get_pbs_info();
-    wstringstream wss;
-    wss << info.c_str();
-    graphics.DrawString(wss.str().c_str(), -1, &font, point1, &brush);
-    graphics.DrawRectangle(&pen, 200, 10, 740, 30);
+    if (ntfs){
+      string info = "NTFS\n\n" + ntfs->get_pbs_info();
+      wstringstream wss;
+      wss << info.c_str();
+      graphics.DrawString(wss.str().c_str(), -1, &font, point1, &brush);
+      graphics.DrawRectangle(&pen, 200, 10, 740, 30);
 
-    EntryNTFS* cd = ntfs->get_current_directory();
-    string path = cd->get_path();
-    DrawTextA(hdc, path.c_str(), path.length(), &path_rect, DT_LEFT);
+      EntryNTFS* cd = ntfs->get_current_directory();
+      if (cd){
+        string path = cd->get_path();
+        DrawTextA(hdc, path.c_str(), path.length(), &path_rect, DT_LEFT);
+      }
+    }
   }
 }
 

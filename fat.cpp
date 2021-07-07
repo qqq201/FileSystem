@@ -554,7 +554,7 @@ unsigned long long NTFS::Sv = 0;
 unsigned long long NTFS::mft_cluster = 0;
 int NTFS::size_mft_entry = 2;
 
-vector<bool> read(100, false);
+vector<unsigned long long> read;
 
 signed long long TwoElement(unsigned long long num){
   // Find binary vector for number
@@ -616,7 +616,7 @@ EntryNTFS::EntryNTFS(unsigned long long mft_id, string path, EntryNTFS* parent) 
 EntryNTFS::~EntryNTFS(){
 	for (auto entry : entries)
 		delete entry;
-
+	entries.clear();
 	parent = NULL;
 }
 
@@ -642,14 +642,15 @@ void EntryNTFS::read_index_buffer(){
 			DWORD index_node_length = little_edian_char(buff, nh_start_offset + 4, 4) - 16 - eh_start_offset + nh_start_offset;
 			int offset_attribute_content = 16;
 
-			while (index_node_length > 0){
-				unsigned long long mft_id = little_edian_char(buff, eh_start_offset, 6);
+			while (index_node_length > 16){
+				unsigned long long child_mft_id = little_edian_char(buff, eh_start_offset, 6);
 				WORD index_length = little_edian_char(buff, eh_start_offset + 8, 2);
-
-				if (index_length > 16 && !read[mft_id]){
-					EntryNTFS* new_file = new EntryNTFS(mft_id, this->root + this->name + "/", this);
-					new_file->read_content();
-					entries.push_back(new_file);
+				if (index_length > 50 && *find(read.begin(), read.end(), child_mft_id) != child_mft_id){
+					EntryNTFS* new_file = new EntryNTFS(child_mft_id, this->root + this->name + "/", this);
+					if (new_file->read_content())
+						entries.push_back(new_file);
+					else
+						delete new_file;
 				}
 
 				eh_start_offset += index_length;
@@ -779,19 +780,25 @@ void EntryNTFS::index_root_attribute(char* buff){
 
 	int offset_to_AtrContent = little_edian_char(buff, start_offset + 20, 2) + start_offset;
 	int att_type = little_edian_char(buff, offset_to_AtrContent, 4);
-	is_nonresident = little_edian_char(buff, offset_to_AtrContent + 28 , 4);
+
+	if (buff[offset_to_AtrContent + 28] == 1 && attributes[9].first != 0)
+		is_nonresident = true;
+	else
+		is_nonresident = false;
 
 	if(!is_nonresident && attributes[9].first == 0 && att_type == 48){
 		int offset_start_node = offset_to_AtrContent + 16 + little_edian_char(buff, offset_to_AtrContent + 16, 4);
 		int length_node = little_edian_char(buff, offset_to_AtrContent + 20, 4) - 16;
 
-		while (length_node > 0){
-			int mft_id = little_edian_char(buff, offset_start_node, 6);
+		while (length_node > 16){
+			int child_mft_id = little_edian_char(buff, offset_start_node, 6);
 			int index_length = little_edian_char(buff, offset_start_node + 8, 2);
-			if (index_length > 16 && !read[mft_id]){
-				EntryNTFS* new_file = new EntryNTFS(mft_id, this->root, this);
-				new_file->read_content();
-				entries.push_back(new_file);
+			if (index_length > 50 && *find(read.begin(), read.end(), child_mft_id) != child_mft_id){
+				EntryNTFS* new_file = new EntryNTFS(child_mft_id, this->root + this->name + "/", this);
+				if (new_file->read_content())
+					entries.push_back(new_file);
+				else
+					delete new_file;
 			}
 			length_node -= index_length;
 			offset_start_node += index_length;
@@ -800,38 +807,40 @@ void EntryNTFS::index_root_attribute(char* buff){
 }
 
 void EntryNTFS::index_location_attribute(char* buff){
-	DWORD start_offset = attributes[9].first;
-	DWORD length = attributes[9].second;
+	if (is_nonresident){
+		DWORD start_offset = attributes[9].first;
+		DWORD length = attributes[9].second;
 
-	unsigned long long start_runlist = start_offset + little_edian_char(buff, start_offset + 32, 2);
-	unsigned long long check_runlist = buff[start_runlist];
+		unsigned long long start_runlist = start_offset + little_edian_char(buff, start_offset + 32, 2);
+		unsigned long long check_runlist = buff[start_runlist];
 
-	unsigned long long size_fragment;
-	signed long long location_fragment = 0; //clusters
+		unsigned long long size_fragment;
+		signed long long location_fragment = 0; //clusters
 
-	while(check_runlist != 0){
-		int s1 = (buff[start_runlist] & 0xF0) >> 4;
-		int s2 = (buff[start_runlist] & 0x0F) >> 0;
+		while(check_runlist != 0){
+			int s1 = (buff[start_runlist] & 0xF0) >> 4;
+			int s2 = (buff[start_runlist] & 0x0F) >> 0;
 
-		size_fragment = little_edian_char(buff, start_runlist + 1, s2) * NTFS::Sc * default_sector_size;
+			size_fragment = little_edian_char(buff, start_runlist + 1, s2) * NTFS::Sc * default_sector_size;
 
-		unsigned long long dec_compare = little_edian_char(buff, start_runlist + 1 + s2, s1);
+			unsigned long long dec_compare = little_edian_char(buff, start_runlist + 1 + s2, s1);
 
-		if (dec_compare > (1 << s1 * 8 - 1))
-			location_fragment = TwoElement(dec_compare);
-		else
-			location_fragment = dec_compare;
+			if (dec_compare > (1 << s1 * 8 - 1))
+				location_fragment = TwoElement(dec_compare);
+			else
+				location_fragment = dec_compare;
 
-		clusters.push_back(make_pair(location_fragment, size_fragment));
-		start_runlist += 1 + s1 + s2;
-		check_runlist = buff[start_runlist];
+			clusters.push_back(make_pair(location_fragment, size_fragment));
+			start_runlist += 1 + s1 + s2;
+			check_runlist = buff[start_runlist];
+		}
+
+		for (int i = 1; i < clusters.size(); ++i){
+			clusters[i].first += clusters[i - 1].first;	//clusters
+		}
+
+		read_index_buffer();
 	}
-
-	for (int i = 1; i < clusters.size(); ++i){
-		clusters[i].first += clusters[i - 1].first;	//clusters
-	}
-
-	read_index_buffer();
 }
 
 void EntryNTFS::attributes_handler(char* buff, int type) {
@@ -848,20 +857,22 @@ void EntryNTFS::attributes_handler(char* buff, int type) {
 		case 7: //x80
 			data_attribute(buff);
 			break;
-		case 8: //x90
-			index_root_attribute(buff);
-			break;
-		case 9: //xA0
-			index_location_attribute(buff);
-			break;
 	}
 }
 
-void EntryNTFS::read_content() {
-	read[mft_id] = true;
+bool EntryNTFS::read_content() {
+	read.push_back(mft_id);
 
 	char* buff = new char[default_sector_size * 2];
 	ReadSector(NTFS::disk, buff, mft_id * 2 + NTFS::mft_cluster * NTFS::Sc, 2);
+
+	//check if this is a file record
+	string file;
+	for (int i = 0; i < 5; ++i)
+		file.push_back(buff[i]);
+
+	if (file.compare("FILE0") != 0)
+		return false;
 
 	unsigned long long  offset_to_start;
 	offset_to_start = little_edian_char(buff, 20, 2);
@@ -894,27 +905,32 @@ void EntryNTFS::read_content() {
 	for(int i = 0; i < 10; ++i){
 		attributes_handler(buff, i);
 	}
+
+	return true;
 }
 
 string EntryNTFS::get_content(){
 	if (is_nonresident){
-		string str;
-		bool stop = false;
-		for (auto cluster : clusters){
-			if (stop)
-				break;
-			char* buff = new char[cluster.second];
-			ReadSector(NTFS::disk, buff, cluster.first * NTFS::Sc, cluster.second / default_sector_size);
-			for (int i = 0; i < cluster.second && !stop; ++i)
-				if (buff[i])
-					str.push_back(buff[i]);
-				else
-					stop = true;
+		if (this->ext.compare("txt") == 0){
+			string str;
+			bool stop = false;
+			for (auto cluster : clusters){
+				if (stop)
+					break;
+				char* buff = new char[cluster.second];
+				ReadSector(NTFS::disk, buff, cluster.first * NTFS::Sc, cluster.second / default_sector_size);
+				for (int i = 0; i < cluster.second && !stop; ++i)
+					if (buff[i])
+						str.push_back(buff[i]);
+					else
+						stop = true;
 
-			delete[] buff;
+				delete[] buff;
+			}
+			return str;
 		}
-
-		return str;
+		else
+			return "-- SORRY, CURRENTLY WE CAN ONLY OPEN TEXT (TXT) FILES --";
 	}
 	else {
 		return file_content;
@@ -979,6 +995,13 @@ vector<string> EntryNTFS::get_info(){
 }
 
 vector<EntryNTFS*> EntryNTFS::get_directory(){
+	if (type() && entries.size() == 0){
+		char* buff = new char[2 * default_sector_size];
+		ReadSector(NTFS::disk, buff, mft_id * 2 + NTFS::Sc * NTFS::mft_cluster, 2);
+		index_root_attribute(buff);
+		index_location_attribute(buff);
+		delete buff;
+	}
 	return entries;
 }
 
@@ -1000,6 +1023,7 @@ NTFS::NTFS(const char* disk) { this->disk = disk; }
 NTFS::~NTFS(){
 	delete root;
 	current_directory = NULL;
+	read.clear();
 }
 
 bool NTFS::read_pbs(char* buff) {

@@ -185,7 +185,7 @@ class EntryNTFS {
 
 		void index_location_attribute(char* buff);
 
-    void read_content();
+    bool read_content();
 
     bool type();
 
