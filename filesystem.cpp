@@ -1,4 +1,4 @@
-#include "fat.h"
+#include "filesystem.h"
 
 char const hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 
@@ -674,6 +674,7 @@ string to_normal_string(string s){
 void EntryNTFS::file_name_attribute(char* buff) {
 	if (isRoot){
 		this->name = NTFS::disk[4];
+		this->name += ":";
 	}
 	else{
 		DWORD start_offset = attributes[2].first;
@@ -899,9 +900,6 @@ bool EntryNTFS::read_content() {
 			continue;
 		}
 	}
-
-	//for (auto att : attributes)
-	//	cout << att.first << " " << att.second << endl;
 
 	for(int i = 0; i < 10; ++i){
 		attributes_handler(buff, i);
