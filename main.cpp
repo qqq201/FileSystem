@@ -259,8 +259,9 @@ LRESULT CALLBACK fs_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
           }
           reset_scroll(directory_hwnd);
           EnumChildWindows(directory_hwnd, DestoryChildCallback, 0);
+          file_content.clear();
+          read_folder = true;
           InvalidateRect(directory_hwnd, NULL, TRUE);
-          RedrawWindow(directory_hwnd, NULL, NULL, RDW_INTERNALPAINT);
 
           ShowWindow(menu_hwnd, SW_SHOW);
           ShowWindow(hwnd, SW_HIDE);
